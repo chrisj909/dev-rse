@@ -1,0 +1,51 @@
+parcel_id,raw_address,city,state,zip,owner_name,raw_mailing_address,last_sale_date,assessed_value
+21-01-10-0-001-001.000,124 Oak Street,Hoover,AL,35244,James & Patricia Holloway,124 Oak Street Hoover AL 35244,2008-03-15,187500.00
+21-01-10-0-001-002.000,208 Magnolia Drive,Hoover,AL,35244,Robert Whitfield,PO Box 4421 Birmingham AL 35203,2007-06-22,215000.00
+21-01-10-0-001-003.000,315 Pine Court,Hoover,AL,35226,Sandra Lee Nguyen,315 Pine Court Hoover AL 35226,2021-09-10,248000.00
+21-01-10-0-001-004.000,422 Elm Lane,Hoover,AL,35226,Marcus & Angela Darden,6714 Southgate Blvd Chattanooga TN 37412,2005-11-30,192000.00
+21-01-10-0-001-005.000,519 Willow Way,Hoover,AL,35244,William T. Patterson,519 Willow Way Hoover AL 35244,2019-04-18,275000.00
+21-02-20-0-002-001.000,105 Church Street,Alabaster,AL,35007,Dorothy Mae Simpson,,2003-07-08,145000.00
+21-02-20-0-002-002.000,217 Cedar Avenue,Alabaster,AL,35007,Harold & Faye Osborne,217 Cedar Avenue Alabaster AL 35007,2001-01-25,162500.00
+21-02-20-0-002-003.000,329 Hickory Hill,Alabaster,AL,35007,Consolidated Holdings LLC,888 Commerce Pkwy Suite 300 Atlanta GA 30339,2020-12-01,198000.00
+21-02-20-0-002-004.000,441 Birch Road,Alabaster,AL,35007,Betty Jo Crawford,441 Birch Road Alabaster AL 35007,1999-05-14,134000.00
+21-02-20-0-002-005.000,558 Poplar Street,Alabaster,AL,35007,Thomas R. Benson,4509 Oakwood Dr Nashville TN 37215,2004-08-27,155000.00
+21-03-30-0-003-001.000,633 Maple Avenue,Pelham,AL,35124,George & Mary Alice Hadley,633 Maple Avenue Pelham AL 35124,2010-06-03,178000.00
+21-03-30-0-003-002.000,745 Sunset Boulevard,Pelham,AL,35124,First State Rentals Inc,2200 Highway 31 South Suite 101 Pelham AL 35124,2017-02-14,205000.00
+21-03-30-0-003-003.000,852 Ridgewood Drive,Pelham,AL,35124,Charles W. Mobley III,852 Ridgewood Drive Pelham AL 35124,1997-09-19,143000.00
+21-03-30-0-003-004.000,960 Valley Circle,Pelham,AL,35124,Janice Elaine Porter,PO Box 12 Anniston AL 36202,2002-04-06,168000.00
+21-03-30-0-003-005.000,1047 Forest Lane,Pelham,AL,35124,Raymond & Louise Garrett,,2023-07-22,292000.00
+21-04-40-0-004-001.000,112 Main Street,Calera,AL,35040,Billy Ray Tanner,112 Main Street Calera AL 35040,2000-10-11,118000.00
+21-04-40-0-004-002.000,224 Oak Hill Road,Calera,AL,35040,Judith Ann Pruitt,224 Oak Hill Road Calera AL 35040,2006-03-29,128000.00
+21-04-40-0-004-003.000,336 Spring Valley Drive,Calera,AL,35040,Southeast Property Group LLC,PO Box 550321 Atlanta GA 30355,2016-11-18,152000.00
+21-04-40-0-004-004.000,448 Meadow Lane,Calera,AL,35040,Michael & Debra Yates,448 Meadow Lane Calera AL 35040,2013-08-05,139000.00
+21-04-40-0-004-005.000,560 Country Club Drive,Calera,AL,35040,Phillip Laverne Colvin,9834 Peachtree Rd NE Atlanta GA 30309,2008-12-20,175000.00
+21-05-50-0-005-001.000,220 Shelby County Road 41,Chelsea,AL,35043,Linda & Roy Stephenson,220 Shelby County Road 41 Chelsea AL 35043,2003-02-14,183000.00
+21-05-50-0-005-002.000,334 New Hope Road,Chelsea,AL,35043,Vernon James Hicks,334 New Hope Road Chelsea AL 35043,2022-05-30,318000.00
+21-05-50-0-005-003.000,446 Pebble Brook Lane,Chelsea,AL,35043,Heartland Realty Partners LP,1800 Peachtree St NW Suite 200 Atlanta GA 30309,2015-09-12,245000.00
+21-05-50-0-005-004.000,558 Dogwood Circle,Chelsea,AL,35043,Ann Marie Holbrook,,1996-06-28,157000.00
+21-05-50-0-005-005.000,670 Rolling Hills Road,Chelsea,AL,35043,Frederick Dale Moore,670 Rolling Hills Road Chelsea AL 35043,2024-01-15,385000.00
+21-06-60-0-006-001.000,101 Court Square,Columbiana,AL,35051,Shelby County Properties Trust,PO Box 309 Columbiana AL 35051,2001-11-04,95000.00
+21-06-60-0-006-002.000,215 Jefferson Street,Columbiana,AL,35051,Connie Mae Langford,215 Jefferson Street Columbiana AL 35051,1998-08-17,87500.00
+21-06-60-0-006-003.000,328 Highway 25,Columbiana,AL,35051,National Asset Holdings LLC,1700 Lincoln St Suite 1500 Denver CO 80203,2018-04-09,115000.00
+21-06-60-0-006-004.000,441 Hickory Lane,Columbiana,AL,35051,Albert & Rosa Jean Morris,441 Hickory Lane Columbiana AL 35051,2009-07-31,102000.00
+21-06-60-0-006-005.000,554 Oak Grove Road,Columbiana,AL,35051,Darrell Wayne Simmons,554 Oak Grove Road Columbiana AL 35051,2025-03-05,148000.00
+21-07-70-0-007-001.000,118 Shelby Street,Helena,AL,35080,Kevin & Melissa Thornton,118 Shelby Street Helena AL 35080,2011-05-19,214000.00
+21-07-70-0-007-002.000,234 River Bend Drive,Helena,AL,35080,James Earl Hawkins Jr,234 River Bend Drive Helena AL 35080,2007-01-23,197000.00
+21-07-70-0-007-003.000,350 Greystone Parkway,Helena,AL,35080,Magnolia Properties LLC,3340 Peachtree Rd NE Suite 900 Atlanta GA 30326,2019-10-07,285000.00
+21-07-70-0-007-004.000,466 Cahaba Valley Road,Helena,AL,35080,Earl Thomas McGee,,2004-03-16,173000.00
+21-07-70-0-007-005.000,582 Stonegate Drive,Helena,AL,35080,Patricia Lynn Winters,582 Stonegate Drive Helena AL 35080,2020-08-24,267000.00
+21-08-80-0-008-001.000,205 University Boulevard,Montevallo,AL,35115,Reginald & Carol Watkins,205 University Boulevard Montevallo AL 35115,2002-09-08,122000.00
+21-08-80-0-008-002.000,317 Vine Street,Montevallo,AL,35115,Howard Eugene Estes,317 Vine Street Montevallo AL 35115,1995-04-12,98000.00
+21-08-80-0-008-003.000,429 Shelby Drive,Montevallo,AL,35115,Alabama Investment Partners LLC,600 Beacon Pkwy W Suite 300 Birmingham AL 35209,2014-07-25,135000.00
+21-08-80-0-008-004.000,541 College Lane,Montevallo,AL,35115,Norma Jean Blackwell,,1993-11-30,89000.00
+21-08-80-0-008-005.000,653 Pea Ridge Road,Montevallo,AL,35115,Dennis & Sharon Caldwell,653 Pea Ridge Road Montevallo AL 35115,2023-11-12,178000.00
+21-09-90-0-009-001.000,110 Sterrett Road,Sterrett,AL,35147,Bobby Dean Hutchinson,110 Sterrett Road Sterrett AL 35147,2005-06-17,142000.00
+21-09-90-0-009-002.000,222 Lake Ridge Drive,Sterrett,AL,35147,Cumberland Real Estate Trust,PO Box 190857 Nashville TN 37219,2012-03-08,195000.00
+21-09-90-0-009-003.000,334 Meadowbrook Lane,Sterrett,AL,35147,Jesse & Wanda Poole,334 Meadowbrook Lane Sterrett AL 35147,2000-01-22,158000.00
+21-09-90-0-009-004.000,446 Timber Ridge Trail,Sterrett,AL,35147,Victoria Lynn Baxter,,2006-10-05,167000.00
+21-09-90-0-009-005.000,558 Creekwood Road,Sterrett,AL,35147,Paul Anthony Ramsey,3205 Lakeshore Dr Birmingham AL 35209,2009-04-29,182000.00
+21-10-00-0-010-001.000,115 Main Street,Wilsonville,AL,35186,Samuel R. Jennings,115 Main Street Wilsonville AL 35186,2003-12-11,79000.00
+21-10-00-0-010-002.000,227 Depot Street,Wilsonville,AL,35186,Wallace & June Barnett,227 Depot Street Wilsonville AL 35186,1997-08-03,72000.00
+21-10-00-0-010-003.000,339 Old Highway 25,Wilsonville,AL,35186,Gulf Coast Holdings LLC,801 Brickell Ave Suite 900 Miami FL 33131,2021-06-14,95000.00
+21-10-00-0-010-004.000,451 Byram Road,Wilsonville,AL,35186,Ethel Marie Goodwin,,1991-03-25,68000.00
+21-10-00-0-010-005.000,563 Pine Hill Drive,Wilsonville,AL,35186,Carl Edward Nettles,563 Pine Hill Drive Wilsonville AL 35186,2018-09-03,112000.00
