@@ -26,7 +26,8 @@ config = context.config
 
 # Override sqlalchemy.url with the sync URL from environment
 sync_url = os.getenv("DATABASE_SYNC_URL", "postgresql://rse_user:rse_password@db:5432/rse_db")
-config.set_main_option("sqlalchemy.url", sync_url)
+# configparser treats % as interpolation — escape them before setting
+config.set_main_option("sqlalchemy.url", sync_url.replace("%", "%%"))
 
 # Configure Python logging from alembic.ini
 if config.config_file_name is not None:

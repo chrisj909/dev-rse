@@ -1,5 +1,5 @@
 """
-Tests for app/signals/engine.py — Sprint 3, Task 7.
+Tests for app/signals/engine.py — Sprint 3 (Task 7), updated Sprint 7 (Task 15).
 
 Strategy:
   - Pure-logic tests run without a database by using an in-memory SQLite
@@ -16,6 +16,7 @@ Covers:
   - SignalEngine.process_batch — aggregated counts correct
   - SignalEngine constructor (custom signal registry)
   - Error handling: detector raises an exception → flag defaults to False
+  - Class-level registry (Sprint 7)
 """
 from __future__ import annotations
 
@@ -27,7 +28,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.signals.engine import (
-    REGISTERED_SIGNALS,
     SignalEngine,
     _absentee_owner_detector,
     _long_term_owner_detector,
@@ -454,33 +454,35 @@ class TestSignalEngineProcessBatch:
         assert counts["absentee_owner"] == 0  # mailing None → not flagged
 
 
-# ── REGISTERED_SIGNALS constant ───────────────────────────────────────────────
+# ── Class registry smoke tests ────────────────────────────────────────────────
 
 class TestRegisteredSignals:
-    """Smoke tests for the module-level REGISTERED_SIGNALS registry."""
+    """Smoke tests for the class-level signal registry (Sprint 7 refactor)."""
 
     def test_registered_signals_not_empty(self):
         """At least one signal must be registered."""
-        assert len(REGISTERED_SIGNALS) > 0
+        assert len(SignalEngine.registered_signals()) > 0
 
     def test_registered_signal_names(self):
         """MVP includes absentee_owner and long_term_owner."""
-        names = [name for name, _ in REGISTERED_SIGNALS]
+        names = [name for name, _ in SignalEngine.registered_signals()]
         assert "absentee_owner" in names
         assert "long_term_owner" in names
 
     def test_each_entry_is_callable(self):
         """Every registered detector must be callable."""
-        for name, detector in REGISTERED_SIGNALS:
+        for name, detector in SignalEngine.registered_signals():
             assert callable(detector), f"Detector for '{name}' is not callable"
 
-    def test_default_engine_uses_registered_signals(self):
-        """Engine with no args uses the module-level REGISTERED_SIGNALS."""
+    def test_default_engine_uses_class_registry(self):
+        """Engine with no args uses the class-level registry (no override)."""
         engine = SignalEngine()
-        assert engine._signals is REGISTERED_SIGNALS
+        assert engine._signals_override is None
+        # _signals property delegates to class registry
+        assert engine._signals == SignalEngine.registered_signals()
 
     def test_custom_engine_uses_provided_signals(self):
-        """Engine with custom registry uses that registry."""
+        """Engine with explicit signals list uses that list (override)."""
         custom = [("test_signal", lambda p: True)]
         engine = SignalEngine(signals=custom)
         assert engine._signals is custom

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.export import router as export_router
 from app.api.health import router as health_router
 from app.api.leads import router as leads_router
 from app.core.config import settings
@@ -28,7 +29,7 @@ app = FastAPI(
 # ── Routers ─────────────────────────────────────────────────────────────────
 app.include_router(health_router)
 app.include_router(leads_router)
-# Sprint 4 Task 11 will add: property_router (/property/{id})
+app.include_router(export_router)
 
 
 if __name__ == "__main__":
