@@ -1,45 +1,26 @@
 {
     "version": 2,
     "builds": [
-          {
-                  "src": "api/index.py",
-                  "use": "@vercel/python",
-                  "config": {
-                            "runtime": "python3.11"
-                  }
-          },
-          {
-                  "src": "frontend/package.json",
-                  "use": "@vercel/next"
-          }
+        {
+            "src": "api/index.py",
+            "use": "@vercel/python",
+            "config": {
+                "runtime": "python3.11"
+            }
+        },
+        {
+            "src": "frontend/package.json",
+            "use": "@vercel/next"
+        }
     ],
     "routes": [
-          {
-                  "src": "/api/(.*)",
-                  "dest": "api/index.py"
-          },
-          {
-                  "src": "/(.*)",
-                  "dest": "frontend/$1"
-          }
-    ],
-    "env": {
-          "DATABASE_URL": "@database_url",
-          "DATABASE_SYNC_URL": "@database_sync_url",
-          "SUPABASE_URL": "@supabase_url",
-          "SUPABASE_ANON_KEY": "@supabase_anon_key",
-          "APP_ENV": "@app_env",
-          "SCORING_VERSION": "@scoring_version",
-          "SCORE_THRESHOLD": "@score_threshold",
-          "WEBHOOK_URL": "@webhook_url",
-          "WEBHOOK_SECRET": "@webhook_secret",
-          "WEBHOOK_SCORE_THRESHOLD": "@webhook_score_threshold",
-          "CRON_SECRET": "@cron_secret"
-    },
-    "crons": [
-          {
-                  "path": "/api/cron/run-signals",
-                  "schedule": "0 3 * * *"
-          }
+        {
+            "src": "/api/(.*)",
+            "dest": "api/index.py"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "frontend/$1"
+        }
     ]
 }
