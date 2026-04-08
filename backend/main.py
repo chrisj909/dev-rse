@@ -27,9 +27,9 @@ app = FastAPI(
 )
 
 # ── Routers ─────────────────────────────────────────────────────────────────
-app.include_router(health_router)
-app.include_router(leads_router)
-app.include_router(export_router)
+app.include_router(health_router, prefix="/api")
+app.include_router(leads_router, prefix="/api")
+app.include_router(export_router, prefix="/api")
 
 
 if __name__ == "__main__":
