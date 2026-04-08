@@ -38,4 +38,4 @@ from main import app  # noqa: E402  (after path manipulation)
 # can handle requests without modification.
 from mangum import Mangum  # noqa: E402
 
-handler = Mangum(app, lifespan="off")
+handler = Mangum(app, lifespan="off", api_gateway_base_path="/api")
