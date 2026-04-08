@@ -10,7 +10,7 @@ from app.core.config import settings
 
 # Async engine — used by FastAPI and all application code
 engine = create_async_engine(
-    settings.database_url,
+    settings.get_async_database_url(),
     echo=(settings.app_env == "development"),
     pool_pre_ping=True,
     pool_size=10,
