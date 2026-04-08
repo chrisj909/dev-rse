@@ -50,12 +50,12 @@ class Settings(BaseSettings):
 
     # Scoring
     scoring_version: str = "v1"
-    score_threshold: int = 25
+    score_threshold: float = 25
 
     # Webhooks (Sprint 6)
     webhook_url: str = ""
     webhook_secret: str = ""
-    webhook_score_threshold: int = 25  # fire webhook when score >= this value
+    webhook_score_threshold: float = 25  # fire webhook when score >= this value
 
 
 settings = Settings()
