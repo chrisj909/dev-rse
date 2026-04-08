@@ -1,58 +1,149 @@
-—·————→⚠…—import Link from "next/link";
+'use client';
+import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 
-export default function DashboardPage() {
+interface Lead {
+  parcel_id: string;
+  address: string;
+  city: string;
+  owner_name: string;
+  score: number;
+  rank: string;
+  signal_count: number;
+  last_updated: string;
+}
+
+function RankBadge({ rank }: { rank: string }) {
+  const colors: Record<string, string> = {
+    A: 'bg-green-600 text-white',
+    B: 'bg-yellow-500 text-black',
+    C: 'bg-gray-500 text-white',
+  };
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Real Estate Signal Engine — Shelby County, AL
-        </p>
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-8">
-        <StatCard label="Total Properties" value="—" note="Loaded after ingestion" />
-        <StatCard label="Signals Detected" value="—" note="After signal run" />
-        <StatCard label="Top-Ranked Leads" value="—" note="Score ≥ 25 (Rank A)" />
-      </div>
-
-      {/* Quick links */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="text-base font-medium text-gray-800 mb-4">Quick Access</h2>
-        <div className="flex gap-4">
-          <Link
-            href="/leads"
-            className="inline-flex items-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
-          >
-            View Leads →
-          </Link>
-        </div>
-        <p className="mt-4 text-xs text-gray-400">
-          Connect a data source to begin ingesting properties and running signal detection.
-        </p>
-      </div>
-    </div>
+    <span className={`px-2 py-0.5 rounded text-xs font-bold ${colors[rank] ?? 'bg-gray-600 text-white'}`}>
+      {rank}
+    </span>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  note,
-}: {
-  label: string;
-  value: string;
-  note: string;
-}) {
+export default function Dashboard() {
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+
+  const fetchLeads = useCallback(async () => {
+    try {
+      const res = await fetch('/api/leads');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setLeads(Array.isArray(data) ? data : (data.leads ?? []));
+      setLastRefresh(new Date());
+      setError(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load leads');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLeads();
+    const interval = setInterval(fetchLeads, 60000);
+    return () => clearInterval(interval);
+  }, [fetchLeads]);
+
+  const totalProperties = leads.length;
+  const rankACount = leads.filter(l => l.rank === 'A').length;
+  const totalSignals = leads.reduce((sum, l) => sum + (l.signal_count ?? 0), 0);
+  const top5 = [...leads].sort((a, b) => b.score - a.score).slice(0, 5);
+
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-        {label}
-      </p>
-      <p className="mt-2 text-3xl font-semibold text-gray-900">{value}</p>
-      <p className="mt-1 text-xs text-gray-400">{note}</p>
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Real Estate Signal Engine</h1>
+          <p className="text-gray-400 text-sm mt-1">Shelby County, AL — Lead Scoring Dashboard</p>
+        </div>
+        <div className="text-right">
+          {lastRefresh && (
+            <p className="text-xs text-gray-500">Last updated: {lastRefresh.toLocaleTimeString()}</p>
+          )}
+          <button onClick={fetchLeads} className="mt-1 text-xs text-blue-400 hover:text-blue-300 underline">
+            Refresh now
+          </button>
+        </div>
+      </div>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-gray-800 rounded-lg p-5 border border-gray-700">
+          <p className="text-gray-400 text-sm uppercase tracking-wide">Total Properties</p>
+          <p className="text-3xl font-bold text-white mt-2">{loading ? '—' : totalProperties.toLocaleString()}</p>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-5 border border-gray-700">
+          <p className="text-gray-400 text-sm uppercase tracking-wide">Signals Detected</p>
+          <p className="text-3xl font-bold text-white mt-2">{loading ? '—' : totalSignals.toLocaleString()}</p>
+        </div>
+        <div className="bg-gray-800 rounded-lg p-5 border border-gray-700">
+          <p className="text-gray-400 text-sm uppercase tracking-wide">Top Leads (Rank A)</p>
+          <p className="text-3xl font-bold text-green-400 mt-2">{loading ? '—' : rankACount.toLocaleString()}</p>
+        </div>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="bg-red-900/40 border border-red-700 rounded-lg p-4 text-red-300 text-sm">
+          Unable to load data: {error}
+        </div>
+      )}
+
+      {/* Top 5 Leads */}
+      <div className="bg-gray-800 rounded-lg border border-gray-700">
+        <div className="px-5 py-4 border-b border-gray-700 flex items-center justify-between">
+          <h2 className="text-white font-semibold">Top 5 Leads by Score</h2>
+          <Link href="/leads" className="text-blue-400 hover:text-blue-300 text-sm">View all →</Link>
+        </div>
+        {loading ? (
+          <div className="p-5 space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-10 bg-gray-700 rounded animate-pulse" />
+            ))}
+          </div>
+        ) : top5.length === 0 ? (
+          <div className="p-8 text-center text-gray-400">
+            <p>No leads yet.</p>
+            <p className="text-sm mt-1">Connect a data source to begin ingesting properties and running signal detection.</p>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-gray-400 text-xs uppercase">
+                <th className="px-5 py-3 text-left">Address</th>
+                <th className="px-5 py-3 text-left">City</th>
+                <th className="px-5 py-3 text-right">Score</th>
+                <th className="px-5 py-3 text-center">Rank</th>
+                <th className="px-5 py-3 text-right">Signals</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top5.map(lead => (
+                <tr
+                  key={lead.parcel_id}
+                  onClick={() => window.location.href = `/leads/${lead.parcel_id}`}
+                  className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
+                >
+                  <td className="px-5 py-3 text-white">{lead.address}</td>
+                  <td className="px-5 py-3 text-gray-300">{lead.city}</td>
+                  <td className="px-5 py-3 text-right text-white font-mono">{lead.score}</td>
+                  <td className="px-5 py-3 text-center"><RankBadge rank={lead.rank} /></td>
+                  <td className="px-5 py-3 text-right text-gray-300">{lead.signal_count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
