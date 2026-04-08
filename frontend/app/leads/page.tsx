@@ -1,4 +1,4 @@
-import LeadsTable from "@/components/LeadsTable";
+—import LeadsTable from "@/components/LeadsTable";
 
 export default function LeadsPage() {
   return (
