@@ -29,6 +29,11 @@ function RankBadge({ rank }: { rank: string }) {
   );
 }
 
+function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
+  if (sortKey !== col) return <span className="text-gray-600 ml-1">&#8597;</span>;
+  return <span className="text-blue-400 ml-1">{sortDir === 'asc' ? '&#8593;' : '&#8595;'}</span>;
+}
+
 const PAGE_SIZE = 25;
 
 export default function LeadsTable({ leads }: { leads: Lead[] }) {
@@ -71,18 +76,13 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
     setPage(1);
   }
 
-  function SortIcon({ col }: { col: SortKey }) {
-    if (sortKey !== col) return <span className="text-gray-600 ml-1">↕</span>;
-    return <span className="text-blue-400 ml-1">{sortDir === 'asc' ? '↑' : '↓'}|/span>;
-  }
-
   return (
     <div className="space-y-4">
       {/* Controls */}
       <div className="flex flex-col sm:flex-row gap-3">
         <input
           type="text"
-          placeholder="Search by address or owner…"
+          placeholder="Search by address or owner..."
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(1); }}
           className="flex-1 bg-gray-800 border border-gray-600 text-white placeholder-gray-500 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
@@ -107,22 +107,22 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
       {/* Table */}
       <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-750">
+          <thead>
             <tr className="text-gray-400 text-xs uppercase border-b border-gray-700">
               <th className="px-5 py-3 text-left cursor-pointer hover:text-white" onClick={() => toggleSort('address')}>
-                Address <SortIcon col="address" />
+                Address <SortIcon col="address" sortKey={sortKey} sortDir={sortDir} />
               </th>
               <th className="px-5 py-3 text-left cursor-pointer hover:text-white" onClick={() => toggleSort('city')}>
-                City <SortIcon col="city" />
+                City <SortIcon col="city" sortKey={sortKey} sortDir={sortDir} />
               </th>
               <th className="px-5 py-3 text-left">Owner</th>
               <th className="px-5 py-3 text-right cursor-pointer hover:text-white" onClick={() => toggleSort('score')}>
-                Score <SortIcon col="score" />
+                Score <SortIcon col="score" sortKey={sortKey} sortDir={sortDir} />
               </th>
               <th className="px-5 py-3 text-center">Rank</th>
               <th className="px-5 py-3 text-right">Signals</th>
               <th className="px-5 py-3 text-right cursor-pointer hover:text-white" onClick={() => toggleSort('last_updated')}>
-                Updated <SortIcon col="last_updated" />
+                Updated <SortIcon col="last_updated" sortKey={sortKey} sortDir={sortDir} />
               </th>
             </tr>
           </thead>
@@ -147,7 +147,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
                   <td className="px-5 py-3 text-center"><RankBadge rank={lead.rank} /></td>
                   <td className="px-5 py-3 text-right text-gray-300">{lead.signal_count}</td>
                   <td className="px-5 py-3 text-right text-gray-400 text-xs">
-                    {lead.last_updated ? new Date(lead.last_updated).toLocaleDateString() : '—'}
+                    {lead.last_updated ? new Date(lead.last_updated).toLocaleDateString() : '-'}
                   </td>
                 </tr>
               ))
@@ -159,14 +159,14 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-gray-400">
-          <span>Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}</span>
+          <span>Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}</span>
           <div className="flex gap-2">
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
               className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              ← Prev
+              Prev
             </button>
             <span className="px-3 py-1">Page {page} of {totalPages}</span>
             <button
@@ -174,7 +174,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
               disabled={page === totalPages}
               className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Next →
+              Next
             </button>
           </div>
         </div>
