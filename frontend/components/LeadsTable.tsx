@@ -192,7 +192,7 @@ export default function LeadsTable() {
                     <span className="text-xl">⚠</span>
                     <p className="text-sm font-medium text-red-600">{error}</p>
                     <p className="text-xs text-gray-400">
-                      Make sure the FastAPI backend is running.
+                      Unable to load leads. Please check your database connection.
                     </p>
                   </div>
                 </td>
