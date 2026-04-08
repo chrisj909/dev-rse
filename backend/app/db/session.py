@@ -1,4 +1,4 @@
-"""
+—"""
 RSE Database Session Management
 Provides async SQLAlchemy engine and session factory.
 """
