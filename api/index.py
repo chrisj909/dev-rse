@@ -38,4 +38,15 @@ from main import app  # noqa: E402  (after path manipulation)
 # can handle requests without modification.
 from mangum import Mangum  # noqa: E402
 
-handler = Mangum(app, lifespan="off", api_gateway_base_path="/api")
+class _StripApiPrefix:
+    """Strip /api prefix so Vercel's routing reaches FastAPI routes."""
+    def __init__(self, app):
+        self._app = app
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            path = scope.get("path", "")
+            if path.startswith("/api"):
+                scope = {**scope, "path": path[4:] or "/"}
+        await self._app(scope, receive, send)
+
+handler = Mangum(_StripApiPrefix(app), lifespan="off")
