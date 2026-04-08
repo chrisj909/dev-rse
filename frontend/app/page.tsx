@@ -30,8 +30,7 @@ export default function DashboardPage() {
           </Link>
         </div>
         <p className="mt-4 text-xs text-gray-400">
-          Sprint 3 in progress — lead data and signal scores will populate once
-          the batch processing job has been run against the database.
+          Connect a data source to begin ingesting properties and running signal detection.
         </p>
       </div>
     </div>
