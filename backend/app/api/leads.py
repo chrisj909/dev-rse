@@ -1,21 +1,21 @@
-─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────—"""
-RSE Lead Endpoints — Sprint 5, Tasks 11 & 12
+"""
+RSE Lead Endpoints â Sprint 5, Tasks 11 & 12
 app/api/leads.py
 
 Routes:
-  GET /api/leads/top          — top-scored properties (filters + limit)
-  GET /api/leads/new          — recently updated leads (last 7 days)
-  GET /api/property/{id}      — full property detail with signals + score
+  GET /api/leads/top          â top-scored properties (filters + limit)
+  GET /api/leads/new          â recently updated leads (last 7 days)
+  GET /api/property/{id}      â full property detail with signals + score
 
 All routes return Pydantic-validated responses defined in app/models/responses.py.
 DB access uses the async session dependency from app/db/session.py.
 
 Filtering (Task 12) on /leads/top:
-  min_score       int  — minimum score threshold (inclusive)
-  absentee_owner  bool — restrict to absentee-owned properties
-  long_term_owner bool — restrict to long-term owner properties
-  city            str  — city name match (case-insensitive)
-  limit           int  — result cap (default 50, max 200)
+  min_score       int  â minimum score threshold (inclusive)
+  absentee_owner  bool â restrict to absentee-owned properties
+  long_term_owner bool â restrict to long-term owner properties
+  city            str  â city name match (case-insensitive)
+  limit           int  â result cap (default 50, max 200)
 """
 from __future__ import annotations
 
@@ -54,13 +54,13 @@ _SIGNAL_FIELDS: list[str] = [
 ]
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ââ Helpers âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def _active_signals(signal: Signal) -> list[str]:
     """
     Return only the signal names that are True on this Signal row.
 
-    Order matches _SIGNAL_FIELDS — deterministic across calls.
+    Order matches _SIGNAL_FIELDS â deterministic across calls.
     """
     return [field for field in _SIGNAL_FIELDS if getattr(signal, field, False)]
 
@@ -82,7 +82,7 @@ def _build_lead(prop: Property, signal: Signal, score: Score) -> LeadResponse:
     )
 
 
-# ── GET /api/leads/top ────────────────────────────────────────────────────────
+# ââ GET /api/leads/top ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 @router.get("/leads/top", response_model=LeadsListResponse)
 async def get_top_leads(
@@ -97,7 +97,7 @@ async def get_top_leads(
     Return the top-scored properties, sorted by score descending.
 
     Requires that signal and score rows exist for each property (inner join).
-    Properties without scores are excluded — run the scoring job first.
+    Properties without scores are excluded â run the scoring job first.
 
     Returns:
         LeadsListResponse with matched leads (up to `limit`) and the
@@ -105,7 +105,7 @@ async def get_top_leads(
     """
     conditions = _build_filter_conditions(min_score, absentee_owner, long_term_owner, city)
 
-    # Data query — ordered by score DESC
+    # Data query â ordered by score DESC
     data_stmt = (
         select(Property, Signal, Score)
         .join(Signal, Signal.property_id == Property.id)
@@ -119,7 +119,7 @@ async def get_top_leads(
     data_result = await session.execute(data_stmt)
     rows = data_result.all()
 
-    # Count query — total matching before limit
+    # Count query â total matching before limit
     count_stmt = (
         select(func.count(Property.id))
         .join(Signal, Signal.property_id == Property.id)
@@ -135,7 +135,7 @@ async def get_top_leads(
     return LeadsListResponse(leads=leads, total=total)
 
 
-# ── GET /api/leads/new ────────────────────────────────────────────────────────
+# ââ GET /api/leads/new ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 @router.get("/leads/new", response_model=LeadsListResponse)
 async def get_new_leads(
@@ -143,7 +143,7 @@ async def get_new_leads(
     session: AsyncSession = Depends(get_db),
 ) -> LeadsListResponse:
     """
-    Return recently updated leads — those scored or re-scored in the last 7 days.
+    Return recently updated leads â those scored or re-scored in the last 7 days.
 
     Ordered by last_updated descending (most recent first).
 
@@ -177,7 +177,7 @@ async def get_new_leads(
     return LeadsListResponse(leads=leads, total=total)
 
 
-# ── GET /api/property/{property_id} ──────────────────────────────────────────
+# ââ GET /api/property/{property_id} ââââââââââââââââââââââââââââââââââââââââââ
 
 @router.get("/property/{property_id}", response_model=PropertyDetailResponse)
 async def get_property_detail(
@@ -191,13 +191,13 @@ async def get_property_detail(
     full score record (score, rank, reason tags, scoring version).
 
     Raises:
-        400 Bad Request — if `property_id` is not a valid UUID.
-        404 Not Found   — if the property doesn't exist, or lacks signal/score data.
+        400 Bad Request â if `property_id` is not a valid UUID.
+        404 Not Found   â if the property doesn't exist, or lacks signal/score data.
     """
     try:
         prop_uuid = uuid.UUID(property_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid property ID — must be a valid UUID.")
+        raise HTTPException(status_code=400, detail="Invalid property ID â must be a valid UUID.")
 
     stmt = (
         select(Property, Signal, Score)
@@ -247,7 +247,7 @@ async def get_property_detail(
     )
 
 
-# ── Internal helpers ──────────────────────────────────────────────────────────
+# ââ Internal helpers ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 def _build_filter_conditions(
     min_score: Optional[int],
