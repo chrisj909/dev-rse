@@ -30,10 +30,13 @@ async def run_ingest(
 
     start = time.time()
 
-    if delinquent_only:
-        records = await run_delinquent_only()
-    else:
-        records = await run_all_scrapers(limit=limit)
+    try:
+        if delinquent_only:
+            records = await run_delinquent_only()
+        else:
+            records = await run_all_scrapers(limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Scraper error: {str(e)}")
 
     fetched = len(records)
 

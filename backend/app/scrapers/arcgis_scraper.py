@@ -87,6 +87,8 @@ class ArcGISScraper:
                 resp = await client.get(BASE_URL, params=params)
                 resp.raise_for_status()
                 data = resp.json()
+                if "error" in data:
+                    raise RuntimeError(f"ArcGIS API error: {data['error']}")
                 features = data.get("features", [])
                 if not features:
                     break
@@ -112,6 +114,8 @@ class ArcGISScraper:
                 resp = await client.get(BASE_URL, params=params)
                 resp.raise_for_status()
                 data = resp.json()
+                if "error" in data:
+                    raise RuntimeError(f"ArcGIS API error: {data['error']}")
                 features = data.get("features", [])
                 if not features:
                     break
