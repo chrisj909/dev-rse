@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     app_port: int = 8000
 
     # Database
-    # DATABASE_URL is the primary setting — set this env var on Vercel (Neon,
+    # DATABASE_URL is the primary setting â set this env var on Vercel (Neon,
     # Supabase, etc.) or in .env for local Docker Compose.
     # Must use an asyncpg-compatible scheme: postgresql+asyncpg://...
     # For sync access (Alembic migrations), a sync URL is derived below.
@@ -57,5 +57,8 @@ class Settings(BaseSettings):
     webhook_secret: str = ""
     webhook_score_threshold: float = 25  # fire webhook when score >= this value
 
+
+    # Ingest security
+    cron_secret: str = ""
 
 settings = Settings()
