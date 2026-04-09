@@ -1,33 +1,48 @@
-"""Database session management for async SQLAlchemy - NullPool for serverless."""
-import os
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+"""RSE Database Session Management - NullPool for serverless.
+Provides async SQLAlchemy engine, session factory, and ORM Base.
+"""
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
-DATABASE_URL = os.getenv("DATABASE_URL", "")
+from app.core.config import settings
 
-def get_async_database_url(url: str) -> str:
-    """Ensure URL uses asyncpg driver."""
-    if url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql+asyncpg://", 1)
-    return url
 
-async_url = get_async_database_url(DATABASE_URL)
-
+# Async engine - NullPool prevents connection reuse across serverless invocations
 engine = create_async_engine(
-    async_url,
+    settings.get_async_database_url(),
+    echo=(settings.app_env == "development"),
     poolclass=NullPool,
-    echo=False,
 )
 
-AsyncSessionLocal = sessionmaker(
-    engine,
+# Session factory
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
     class_=AsyncSession,
     expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
 )
 
-async def get_session():
+
+class Base(DeclarativeBase):
+    """Shared declarative base for all ORM models."""
+    pass
+
+
+async def get_db() -> AsyncSession:
+    """FastAPI dependency - yields a database session per request."""
     async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+# Alias used by ingest router
+async def get_session() -> AsyncSession:
+    """Alias for get_db() - used by ingest endpoints."""
+    async for session in get_db():
         yield session
