@@ -1,5 +1,5 @@
 """
-RSE — FastAPI Application Entry Point
+RSE â FastAPI Application Entry Point
 """
 from contextlib import asynccontextmanager
 
@@ -8,13 +8,14 @@ from fastapi import FastAPI
 from app.api.export import router as export_router
 from app.api.health import router as health_router
 from app.api.leads import router as leads_router
+from app.api import ingest
 from app.core.config import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup / shutdown lifecycle."""
-    print(f"[RSE] Starting up — env={settings.app_env}")
+    print(f"[RSE] Starting up â env={settings.app_env}")
     yield
     print("[RSE] Shutting down.")
 
@@ -26,9 +27,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── Routers ─────────────────────────────────────────────────────────────────
+# ââ Routers âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.include_router(health_router, prefix="/api")
 app.include_router(leads_router, prefix="/api")
+app.include_router(ingest.router, prefix="/api")
 app.include_router(export_router, prefix="/api")
 
 
