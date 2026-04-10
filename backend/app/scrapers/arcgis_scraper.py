@@ -1,131 +1,165 @@
-"""
-Shelby County ArcGIS REST API scraper.
-Endpoint: https://maps.shelbyal.com/gisserver/rest/services/LegacyServices/Cadastral_2022/MapServer/91
-Fields confirmed live: PROPERTY_NUM, NAM1, NAM2, PROP_ADR, PROP_CITY, PROP_STATE, PROP_ZIP,
-  MAIL_ADR, MAIL_CITY, MAIL_STATE, MAIL_ZIP, BD_EQL_VL, TAX_DUE_CD, TAX_SALE,
-  HOMESTEAD_YR, INST_DATE1
-"""
+"""Shelby County ArcGIS parcel scraper."""
 import asyncio
+from datetime import datetime, timezone
+from typing import Any
+
 import httpx
-from datetime import datetime
 
 BASE_URL = (
-    "https://maps.shelbyal.com/gisserver/rest/services/LegacyServices/"
-    "Cadastral_2022/MapServer/91/query"
+    "https://maps.shelbyal.com/gisserver/rest/services"
+    "/LegacyServices/Cadastral_2022/MapServer/91/query"
 )
-PAGE_SIZE = 1000
+
+FIELDS = [
+    "PROPERTY_NUM",
+    "NAM1",
+    "NAM2",
+    "PROP_ADR",
+    "ADR1",
+    "ADR2",
+    "CITY",
+    "STATE",
+    "ZIP",
+    "BD_EQL_VL",
+    "TAX_DUE_CD",
+    "TAX_SALE",
+    "HOMESTEAD_YR",
+    "INST_DATE1",
+]
 
 
-class ArcGISScraper:
-    def __init__(self):
-        self.params_base = {
-            "f": "json",
-            "outFields": ",".join([
-                "PROPERTY_NUM", "NAM1", "NAM2", "PROP_ADR", "PROP_CITY",
-                "PROP_STATE", "PROP_ZIP", "MAIL_ADR", "MAIL_CITY", "MAIL_STATE",
-                "MAIL_ZIP", "BD_EQL_VL", "TAX_DUE_CD", "TAX_SALE",
-                "HOMESTEAD_YR", "INST_DATE1",
-            ]),
-            "returnGeometry": "false",
-            "resultRecordCount": PAGE_SIZE,
-        }
+def _parse_inst_date(val: Any) -> datetime | None:
+    """INST_DATE1 is stored as YYYYMMDD integer, e.g. 20091120."""
+    if not val:
+        return None
+    try:
+        s = str(int(val))
+        return datetime(int(s[:4]), int(s[4:6]), int(s[6:8]), tzinfo=timezone.utc)
+    except Exception:
+        return None
 
-    def _parse_record(self, attrs: dict) -> dict:
-        prop_addr = (attrs.get("PROP_ADR") or "").strip()
-        mail_addr = (attrs.get("MAIL_ADR") or "").strip()
-        prop_city = (attrs.get("PROP_CITY") or "").strip()
-        mail_city = (attrs.get("MAIL_CITY") or "").strip()
 
-        is_absentee = bool(
-            mail_addr and prop_addr and
-            mail_addr.upper() != prop_addr.upper()
-        )
+def _record_to_dict(attrs: dict) -> dict:
+    parcel_id = attrs.get("PROPERTY_NUM") or ""
+    if not parcel_id:
+        return {}
 
-        long_term_years = None
-        inst_date = attrs.get("INST_DATE1")
-        if inst_date:
-            try:
-                recorded = datetime.fromtimestamp(inst_date / 1000)
-                years = (datetime.now() - recorded).days // 365
-                if years >= 10:
-                    long_term_years = years
-            except Exception:
-                pass
+    owner_parts = [attrs.get("NAM1") or "", attrs.get("NAM2") or ""]
+    owner_name = " ".join(p.strip() for p in owner_parts if p.strip()) or None
 
-        owner_parts = [attrs.get("NAM1") or "", attrs.get("NAM2") or ""]
-        owner_name = " ".join(p.strip() for p in owner_parts if p.strip())
+    prop_adr = (attrs.get("PROP_ADR") or "").strip()
+    mail_adr = (attrs.get("ADR1") or "").strip()
+    mail_city = (attrs.get("CITY") or "").strip()
 
-        tax_due = (attrs.get("TAX_DUE_CD") or "").strip().upper()
-        tax_sale = attrs.get("TAX_SALE")
+    is_absentee = bool(
+        prop_adr
+        and mail_adr
+        and prop_adr.upper() != mail_adr.upper()
+    )
 
-        return {
-            "parcel_id": str(attrs.get("PROPERTY_NUM") or "").strip(),
-            "address": prop_addr,
-            "city": prop_city,
-            "owner_name": owner_name,
-            "owner_mailing_address": f"{mail_addr}, {mail_city}".strip(", "),
-            "assessed_value": float(attrs.get("BD_EQL_VL") or 0) or None,
-            "is_tax_delinquent": tax_due in ("Y", "YES", "D") or bool(tax_sale),
-            "is_absentee_owner": is_absentee,
-            "long_term_owner_years": long_term_years,
-            "is_probate": False,
-            "is_pre_foreclosure": False,
-            "raw_data": {
-                "source": "arcgis",
-                "tax_due_cd": attrs.get("TAX_DUE_CD"),
-                "tax_sale": attrs.get("TAX_SALE"),
-                "homestead_yr": attrs.get("HOMESTEAD_YR"),
-            },
-        }
+    inst_date = _parse_inst_date(attrs.get("INST_DATE1"))
+    long_term_years: int | None = None
+    if inst_date:
+        years = (datetime.now(timezone.utc) - inst_date).days / 365.25
+        if years >= 10:
+            long_term_years = int(years)
 
-    async def fetch_all(self, limit: int = None) -> list[dict]:
-        records = []
-        offset = 0
-        async with httpx.AsyncClient(timeout=30) as client:
-            while True:
-                params = {**self.params_base, "where": "1=1", "resultOffset": offset}
-                resp = await client.get(BASE_URL, params=params)
-                resp.raise_for_status()
-                data = resp.json()
-                if "error" in data:
-                    raise RuntimeError(f"ArcGIS API error: {data['error']}")
-                features = data.get("features", [])
-                if not features:
-                    break
-                for f in features:
-                    rec = self._parse_record(f.get("attributes", {}))
-                    if rec["parcel_id"]:
-                        records.append(rec)
-                offset += PAGE_SIZE
-                if limit and len(records) >= limit:
-                    records = records[:limit]
-                    break
-                if not data.get("exceededTransferLimit", False) and len(features) < PAGE_SIZE:
-                    break
-                await asyncio.sleep(0.1)
-        return records
+    tax_due = str(attrs.get("TAX_DUE_CD") or "").strip().upper()
+    is_delinquent = tax_due == "Y"
 
-    async def fetch_delinquent_only(self) -> list[dict]:
-        records = []
-        offset = 0
-        async with httpx.AsyncClient(timeout=30) as client:
-            while True:
-                params = {**self.params_base, "where": "TAX_DUE_CD='Y' OR TAX_SALE IS NOT NULL", "resultOffset": offset}
-                resp = await client.get(BASE_URL, params=params)
-                resp.raise_for_status()
-                data = resp.json()
-                if "error" in data:
-                    raise RuntimeError(f"ArcGIS API error: {data['error']}")
-                features = data.get("features", [])
-                if not features:
-                    break
-                for f in features:
-                    rec = self._parse_record(f.get("attributes", {}))
-                    if rec["parcel_id"]:
-                        rec["is_tax_delinquent"] = True
-                        records.append(rec)
-                offset += PAGE_SIZE
-                if not data.get("exceededTransferLimit", False) and len(features) < PAGE_SIZE:
-                    break
-                await asyncio.sleep(0.1)
-        return records
+    assessed_raw = attrs.get("BD_EQL_VL")
+    try:
+        assessed_value = float(assessed_raw) if assessed_raw is not None else None
+    except (TypeError, ValueError):
+        assessed_value = None
+
+    return {
+        "parcel_id": str(parcel_id).strip(),
+        "address": prop_adr or None,
+        "city": mail_city or None,
+        "owner_name": owner_name,
+        "mailing_address": mail_adr or None,
+        "assessed_value": assessed_value,
+        "is_tax_delinquent": is_delinquent,
+        "is_absentee_owner": is_absentee,
+        "long_term_owner_years": long_term_years,
+        "raw": attrs,
+    }
+
+
+async def fetch_all(limit: int | None = None) -> list[dict]:
+    """Paginate through all parcels. Honours optional limit."""
+    results: list[dict] = []
+    offset = 0
+    page_size = 1000
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        while True:
+            params = {
+                "where": "1=1",
+                "outFields": ",".join(FIELDS),
+                "resultOffset": offset,
+                "resultRecordCount": page_size,
+                "f": "json",
+            }
+            resp = await client.get(BASE_URL, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+
+            if "error" in data:
+                raise RuntimeError(f"ArcGIS API error: {data['error']}")
+
+            features = data.get("features", [])
+            if not features:
+                break
+
+            for feat in features:
+                row = _record_to_dict(feat.get("attributes", {}))
+                if row:
+                    results.append(row)
+                    if limit and len(results) >= limit:
+                        return results
+
+            offset += page_size
+            if not data.get("exceededTransferLimit", False) and len(features) < page_size:
+                break
+
+    return results
+
+
+async def fetch_delinquent_only() -> list[dict]:
+    """Fetch only tax-delinquent parcels."""
+    results: list[dict] = []
+    offset = 0
+    page_size = 1000
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        while True:
+            params = {
+                "where": "TAX_DUE_CD='Y'",
+                "outFields": ",".join(FIELDS),
+                "resultOffset": offset,
+                "resultRecordCount": page_size,
+                "f": "json",
+            }
+            resp = await client.get(BASE_URL, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+
+            if "error" in data:
+                raise RuntimeError(f"ArcGIS API error: {data['error']}")
+
+            features = data.get("features", [])
+            if not features:
+                break
+
+            for feat in features:
+                row = _record_to_dict(feat.get("attributes", {}))
+                if row:
+                    results.append(row)
+
+            offset += page_size
+            if not data.get("exceededTransferLimit", False) and len(features) < page_size:
+                break
+
+    return results
