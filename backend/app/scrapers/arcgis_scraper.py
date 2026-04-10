@@ -163,3 +163,13 @@ async def fetch_delinquent_only() -> list[dict]:
                 break
 
     return results
+
+
+class ArcGISScraper:
+    """Class wrapper for backwards-compatible import by app.scrapers.__init__."""
+
+    async def fetch_all(self, limit: int | None = None) -> list[dict]:
+        return await fetch_all(limit=limit)
+
+    async def fetch_delinquent_only(self) -> list[dict]:
+        return await fetch_delinquent_only()
