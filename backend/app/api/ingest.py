@@ -1,5 +1,5 @@
 """
-POST /api/ingest/run — pull data from all scrapers, upsert into properties table,
+POST /api/ingest/run â pull data from all scrapers, upsert into properties table,
 run signal engine on new/updated records.
 Secured with X-Cron-Secret header (reuses CRON_SECRET env var).
 """
@@ -57,23 +57,16 @@ async def run_ingest(
             address=rec.get("address"),
             city=rec.get("city"),
             owner_name=rec.get("owner_name"),
-            owner_mailing_address=rec.get("owner_mailing_address"),
+            mailing_address=rec.get("owner_mailing_address"),
             assessed_value=rec.get("assessed_value"),
-            is_tax_delinquent=rec.get("is_tax_delinquent", False),
-            is_absentee_owner=rec.get("is_absentee_owner", False),
-            is_probate=rec.get("is_probate", False),
-            is_pre_foreclosure=rec.get("is_pre_foreclosure", False),
-            long_term_owner_years=rec.get("long_term_owner_years"),
-            raw_data=rec.get("raw_data", {}),
         ).on_conflict_do_update(
             index_elements=["parcel_id"],
             set_={
                 "address": rec.get("address"),
                 "city": rec.get("city"),
                 "owner_name": rec.get("owner_name"),
-                "is_tax_delinquent": rec.get("is_tax_delinquent", False),
-                "is_absentee_owner": rec.get("is_absentee_owner", False),
-                "raw_data": rec.get("raw_data", {}),
+                "mailing_address": rec.get("owner_mailing_address"),
+                "assessed_value": rec.get("assessed_value"),
             },
         )
         await session.execute(stmt)
