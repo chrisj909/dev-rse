@@ -65,8 +65,8 @@ export default function Dashboard() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Real Estate Signal Engine</h1>
-          <p className="text-gray-400 text-sm mt-1">Shelby County, AL — Lead Scoring Dashboard</p>
+          <h1 className="text-2xl font-bold text-slate-900">Real Estate Signal Engine</h1>
+          <p className="text-slate-500 text-sm mt-1">Shelby County, AL — Lead Scoring Dashboard</p>
         </div>
         <div className="text-right">
           {lastRefresh && (
@@ -136,7 +136,7 @@ export default function Dashboard() {
                   onClick={() => window.location.href = `/leads/${lead.parcel_id}`}
                   className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
-                  <td className="px-5 py-3 text-white">{lead.address}</td>
+                  <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>
                   <td className="px-5 py-3 text-gray-300">{lead.city}</td>
                   <td className="px-5 py-3 text-right text-white font-mono">{lead.score}</td>
                   <td className="px-5 py-3 text-center"><RankBadge rank={lead.rank} /></td>

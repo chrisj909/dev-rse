@@ -58,8 +58,8 @@ export default async function PropertyDetail({ params }: { params: Promise<{ par
       </div>
 
       <div>
-        <h1 className="text-2xl font-bold text-white">{lead.address}</h1>
-        <p className="text-gray-400 mt-1">{lead.city}, AL</p>
+        <h1 className="text-2xl font-bold text-slate-900">{lead.address || 'Address unavailable'}</h1>
+        <p className="text-slate-500 mt-1">{lead.city}, AL</p>
       </div>
 
       <div className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">

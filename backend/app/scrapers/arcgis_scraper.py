@@ -1,5 +1,4 @@
 """Shelby County ArcGIS parcel scraper."""
-import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
@@ -49,7 +48,15 @@ def _record_to_dict(attrs: dict) -> dict:
 
     prop_adr = (attrs.get("PROP_ADR") or "").strip()
     mail_adr = (attrs.get("ADR1") or "").strip()
-    mail_city = (attrs.get("CITY") or "").strip()
+    city = (attrs.get("CITY") or "").strip()
+    state = (attrs.get("STATE") or "AL").strip() or "AL"
+    zip_code_raw = attrs.get("ZIP")
+    zip_code = str(zip_code_raw).strip() if zip_code_raw not in (None, "") else None
+    if zip_code and zip_code.isdigit():
+        zip_code = zip_code.zfill(5)
+
+    mailing_parts = [mail_adr, city, state, zip_code]
+    mailing_address = " ".join(part for part in mailing_parts if part)
 
     is_absentee = bool(
         prop_adr
@@ -76,9 +83,14 @@ def _record_to_dict(attrs: dict) -> dict:
     return {
         "parcel_id": str(parcel_id).strip(),
         "address": prop_adr or None,
-        "city": mail_city or None,
+        "raw_address": prop_adr or None,
+        "city": city or None,
+        "state": state,
+        "zip": zip_code,
         "owner_name": owner_name,
-        "mailing_address": mail_adr or None,
+        "mailing_address": mailing_address or None,
+        "raw_mailing_address": mail_adr or None,
+        "last_sale_date": inst_date.date() if inst_date else None,
         "assessed_value": assessed_value,
         "is_tax_delinquent": is_delinquent,
         "is_absentee_owner": is_absentee,

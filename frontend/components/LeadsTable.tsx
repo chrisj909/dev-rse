@@ -30,8 +30,8 @@ function RankBadge({ rank }: { rank: string }) {
 }
 
 function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
-  if (sortKey !== col) return <span className="text-gray-600 ml-1">&#8597;</span>;
-  return <span className="text-blue-400 ml-1">{sortDir === 'asc' ? '&#8593;' : '&#8595;'}</span>;
+  if (sortKey !== col) return <span className="text-gray-600 ml-1">↕</span>;
+  return <span className="text-blue-400 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
 }
 
 const PAGE_SIZE = 25;
@@ -140,7 +140,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
                   onClick={() => router.push(`/leads/${lead.parcel_id}`)}
                   className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
-                  <td className="px-5 py-3 text-white">{lead.address}</td>
+                  <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>
                   <td className="px-5 py-3 text-gray-300">{lead.city}</td>
                   <td className="px-5 py-3 text-gray-300">{lead.owner_name}</td>
                   <td className="px-5 py-3 text-right font-mono text-white">{lead.score}</td>
