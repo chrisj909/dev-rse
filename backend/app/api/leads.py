@@ -19,8 +19,10 @@ Filtering (Task 12) on /leads/top:
 """
 from __future__ import annotations
 
+import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -40,6 +42,7 @@ from app.models.score import Score
 from app.models.signal import Signal
 
 router = APIRouter(tags=["leads"])
+log = logging.getLogger("rse.api.leads")
 
 # Ordered list of all signal column names on the Signal ORM model.
 # Order determines the canonical order of active signal names in the response.
@@ -69,18 +72,18 @@ def _build_lead(prop: Property, signal: Signal, score: Score) -> LeadResponse:
     """Assemble a LeadResponse from ORM rows."""
     active_signals = _active_signals(signal)
     return LeadResponse(
-        property_id=str(prop.id),
-        parcel_id=prop.parcel_id,
-        address=prop.address,
-        city=prop.city,
-        state=prop.state,
-        zip=prop.zip,
-        owner_name=prop.owner_name,
-        score=score.score,
-        rank=score.rank,
+        property_id=str(getattr(prop, "id", "")),
+        parcel_id=str(getattr(prop, "parcel_id", "") or ""),
+        address=_coerce_text(getattr(prop, "address", None)),
+        city=_coerce_text(getattr(prop, "city", None)),
+        state=_coerce_state(getattr(prop, "state", None)),
+        zip=_coerce_text(getattr(prop, "zip", None)),
+        owner_name=_coerce_text(getattr(prop, "owner_name", None)),
+        score=_coerce_int(getattr(score, "score", None), default=0),
+        rank=_coerce_rank(getattr(score, "rank", None)),
         signals=active_signals,
         signal_count=len(active_signals),
-        last_updated=score.last_updated,
+        last_updated=_coerce_datetime(getattr(score, "last_updated", None)),
     )
 
 
@@ -134,7 +137,7 @@ async def get_top_leads(
     count_result = await session.execute(count_stmt)
     total: int = count_result.scalar() or 0
 
-    leads = [_build_lead(prop, signal, score) for prop, signal, score in rows]
+    leads = _build_leads(rows)
     return LeadsListResponse(leads=leads, total=total)
 
 
@@ -176,7 +179,7 @@ async def get_new_leads(
     count_result = await session.execute(count_stmt)
     total: int = count_result.scalar() or 0
 
-    leads = [_build_lead(prop, signal, score) for prop, signal, score in rows]
+    leads = _build_leads(rows)
     return LeadsListResponse(leads=leads, total=total)
 
 
@@ -261,33 +264,132 @@ def _build_property_detail_response(row: tuple[Property, Signal, Score]) -> Prop
     prop, signal, score = row
 
     return PropertyDetailResponse(
-        property_id=str(prop.id),
-        parcel_id=prop.parcel_id,
-        address=prop.address,
-        raw_address=prop.raw_address,
-        city=prop.city,
-        state=prop.state,
-        zip=prop.zip,
-        owner_name=prop.owner_name,
-        mailing_address=prop.mailing_address,
-        last_sale_date=prop.last_sale_date,
-        assessed_value=float(prop.assessed_value) if prop.assessed_value is not None else None,
+        property_id=str(getattr(prop, "id", "")),
+        parcel_id=str(getattr(prop, "parcel_id", "") or ""),
+        address=_coerce_text(getattr(prop, "address", None)),
+        raw_address=_coerce_text(getattr(prop, "raw_address", None)),
+        city=_coerce_text(getattr(prop, "city", None)),
+        state=_coerce_state(getattr(prop, "state", None)),
+        zip=_coerce_text(getattr(prop, "zip", None)),
+        owner_name=_coerce_text(getattr(prop, "owner_name", None)),
+        mailing_address=_coerce_text(getattr(prop, "mailing_address", None)),
+        last_sale_date=_coerce_date(getattr(prop, "last_sale_date", None)),
+        assessed_value=_coerce_float(getattr(prop, "assessed_value", None)),
         signals=SignalDetail(
-            absentee_owner=signal.absentee_owner,
-            long_term_owner=signal.long_term_owner,
-            tax_delinquent=signal.tax_delinquent,
-            pre_foreclosure=signal.pre_foreclosure,
-            probate=signal.probate,
-            eviction=signal.eviction,
-            code_violation=signal.code_violation,
+            absentee_owner=bool(getattr(signal, "absentee_owner", False)),
+            long_term_owner=bool(getattr(signal, "long_term_owner", False)),
+            tax_delinquent=bool(getattr(signal, "tax_delinquent", False)),
+            pre_foreclosure=bool(getattr(signal, "pre_foreclosure", False)),
+            probate=bool(getattr(signal, "probate", False)),
+            eviction=bool(getattr(signal, "eviction", False)),
+            code_violation=bool(getattr(signal, "code_violation", False)),
         ),
         score=ScoreDetail(
-            score=score.score,
-            rank=score.rank,
-            reason=score.reason,
-            scoring_version=score.scoring_version,
-            last_updated=score.last_updated,
+            score=_coerce_int(getattr(score, "score", None), default=0),
+            rank=_coerce_rank(getattr(score, "rank", None)),
+            reason=_coerce_reason_list(getattr(score, "reason", None)),
+            scoring_version=_coerce_text(getattr(score, "scoring_version", None)) or "v1",
+            last_updated=_coerce_datetime(getattr(score, "last_updated", None)),
         ),
-        created_at=prop.created_at,
-        updated_at=prop.updated_at,
+        created_at=_coerce_datetime(getattr(prop, "created_at", None)),
+        updated_at=_coerce_datetime(getattr(prop, "updated_at", None)),
     )
+
+
+def _build_leads(rows: list[tuple[Property, Signal, Score]]) -> list[LeadResponse]:
+    leads: list[LeadResponse] = []
+    for prop, signal, score in rows:
+        try:
+            leads.append(_build_lead(prop, signal, score))
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "Skipping malformed lead row for property %s (parcel=%s): %s",
+                getattr(prop, "id", "?"),
+                getattr(prop, "parcel_id", "?"),
+                exc,
+            )
+    return leads
+
+
+def _coerce_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _coerce_state(value: object) -> str:
+    state = _coerce_text(value)
+    return state.upper() if state else "AL"
+
+
+def _coerce_rank(value: object) -> str:
+    rank = _coerce_text(value)
+    if rank in {"A", "B", "C"}:
+        return rank
+    return "C"
+
+
+def _coerce_int(value: object, default: int = 0) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_float(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float, Decimal)):
+        return float(value)
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_datetime(value: object) -> datetime:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, time.min, tzinfo=timezone.utc)
+    if isinstance(value, str):
+        normalized = value.strip().replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except ValueError:
+            pass
+    return datetime.now(tz=timezone.utc)
+
+
+def _coerce_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().replace("Z", "+00:00")
+        try:
+            return datetime.fromisoformat(normalized).date()
+        except ValueError:
+            try:
+                return date.fromisoformat(normalized)
+            except ValueError:
+                return None
+    return None
+
+
+def _coerce_reason_list(value: object) -> list[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []

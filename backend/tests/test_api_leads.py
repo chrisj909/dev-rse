@@ -254,6 +254,23 @@ class TestGetTopLeadsWithData:
         assert "last_updated" in lead
         assert lead["last_updated"] is not None
 
+    def test_missing_state_defaults_to_al(self, test_client, mock_session):
+        prop = make_mock_property(state=None)
+        sig = make_mock_signal()
+        sc = make_mock_score()
+        _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
+        lead = test_client.get("/api/leads").json()["leads"][0]
+        assert lead["state"] == "AL"
+
+    def test_missing_rank_and_last_updated_are_coerced(self, test_client, mock_session):
+        prop = make_mock_property()
+        sig = make_mock_signal()
+        sc = make_mock_score(rank=None, last_updated=None)
+        _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
+        lead = test_client.get("/api/leads").json()["leads"][0]
+        assert lead["rank"] == "C"
+        assert lead["last_updated"] is not None
+
     def test_multiple_leads_returned(self, test_client, mock_session):
         rows = [
             (make_mock_property(parcel_id=f"SC-{i}"), make_mock_signal(), make_mock_score(score=30 - i))
@@ -858,6 +875,18 @@ class TestGetPropertyDetailScore:
         prop = self._setup_with_score(mock_session, score=45)
         data = test_client.get(f"/api/property/{prop.id}").json()
         assert data["score"]["score"] == 45
+
+    def test_null_reason_list_is_coerced_to_empty(self, test_client, mock_session):
+        prop = make_mock_property(state=None)
+        sig = make_mock_signal(property_id=prop.id)
+        sc = make_mock_score(property_id=prop.id)
+        sc.reason = None
+        result = _make_one_result((prop, sig, sc))
+        mock_session.execute.return_value = result
+
+        data = test_client.get(f"/api/property/{prop.id}").json()
+        assert data["state"] == "AL"
+        assert data["score"]["reason"] == []
 
     def test_score_rank(self, test_client, mock_session):
         prop = self._setup_with_score(mock_session, rank="A")
