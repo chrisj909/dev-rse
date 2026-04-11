@@ -13,6 +13,7 @@ engine = create_async_engine(
     settings.get_async_database_url(),
     echo=(settings.app_env == "development"),
     poolclass=NullPool,
+    connect_args=settings.get_async_connect_args(),
 )
 
 # Session factory

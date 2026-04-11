@@ -65,7 +65,11 @@ async def _load_leads(
     Query the database for leads at or above `threshold` and in `ranks`.
     Returns a list of CRMLeadExport objects.
     """
-    engine = create_async_engine(settings.get_async_database_url(), echo=False)
+    engine = create_async_engine(
+        settings.get_async_database_url(),
+        echo=False,
+        connect_args=settings.get_async_connect_args(),
+    )
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     leads: list[CRMLeadExport] = []
