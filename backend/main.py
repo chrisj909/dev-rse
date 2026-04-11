@@ -4,7 +4,9 @@ RSE â FastAPI Application Entry Point
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.cron import router as cron_router
 from app.api.export import router as export_router
 from app.api.health import router as health_router
 from app.api.leads import router as leads_router
@@ -27,11 +29,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.get_cors_allowed_origins(),
+    allow_origin_regex=r"https://.*\.(app\.github\.dev|githubpreview\.dev)$",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ââ Routers âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.include_router(health_router, prefix="/api")
+app.include_router(export_router, prefix="/api")
 app.include_router(leads_router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")
-app.include_router(export_router, prefix="/api")
+app.include_router(cron_router, prefix="/api/cron")
 
 
 if __name__ == "__main__":

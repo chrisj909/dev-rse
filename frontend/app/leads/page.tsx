@@ -1,5 +1,7 @@
 import LeadsTable from '../../components/LeadsTable';
 
+import { getServerApiBaseUrl } from '../../lib/api';
+
 interface Lead {
   parcel_id: string;
   address: string;
@@ -8,12 +10,13 @@ interface Lead {
   score: number;
   rank: string;
   signal_count: number;
+  signals: string[];
   last_updated: string;
 }
 
 async function getLeads(): Promise<Lead[]> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
+    const baseUrl = getServerApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/leads`, { cache: 'no-store' });
     if (!res.ok) return [];
     const data = await res.json();

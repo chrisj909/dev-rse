@@ -39,7 +39,7 @@ from app.models.responses import (
 from app.models.score import Score
 from app.models.signal import Signal
 
-router = APIRouter(prefix="/api", tags=["leads"])
+router = APIRouter(tags=["leads"])
 
 # Ordered list of all signal column names on the Signal ORM model.
 # Order determines the canonical order of active signal names in the response.
@@ -67,6 +67,7 @@ def _active_signals(signal: Signal) -> list[str]:
 
 def _build_lead(prop: Property, signal: Signal, score: Score) -> LeadResponse:
     """Assemble a LeadResponse from ORM rows."""
+    active_signals = _active_signals(signal)
     return LeadResponse(
         property_id=str(prop.id),
         parcel_id=prop.parcel_id,
@@ -77,13 +78,15 @@ def _build_lead(prop: Property, signal: Signal, score: Score) -> LeadResponse:
         owner_name=prop.owner_name,
         score=score.score,
         rank=score.rank,
-        signals=_active_signals(signal),
+        signals=active_signals,
+        signal_count=len(active_signals),
         last_updated=score.last_updated,
     )
 
 
 # ââ GET /api/leads/top ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
+@router.get("/leads", response_model=LeadsListResponse)
 @router.get("/leads/top", response_model=LeadsListResponse)
 async def get_top_leads(
     min_score: Optional[int] = Query(default=None, ge=0, description="Minimum score threshold (inclusive)."),
@@ -199,19 +202,62 @@ async def get_property_detail(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid property ID â must be a valid UUID.")
 
+    row = await _fetch_property_detail_row(session, Property.id == prop_uuid)
+    return _build_property_detail_response(row)
+
+
+@router.get("/leads/{parcel_id}", response_model=PropertyDetailResponse)
+async def get_property_detail_by_parcel_id(
+    parcel_id: str,
+    session: AsyncSession = Depends(get_db),
+) -> PropertyDetailResponse:
+    """Return full property detail using the public parcel_id route key."""
+    row = await _fetch_property_detail_row(session, Property.parcel_id == parcel_id)
+    return _build_property_detail_response(row)
+
+
+# ââ Internal helpers ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+
+def _build_filter_conditions(
+    min_score: Optional[int],
+    absentee_owner: Optional[bool],
+    long_term_owner: Optional[bool],
+    city: Optional[str],
+) -> list:
+    """
+    Build a list of SQLAlchemy WHERE clause conditions from filter params.
+
+    Each condition is appended only when the corresponding param is not None.
+    Pass the returned list directly to `.where(*conditions)`.
+    """
+    conditions = []
+    if min_score is not None:
+        conditions.append(Score.score >= min_score)
+    if absentee_owner is not None:
+        conditions.append(Signal.absentee_owner == absentee_owner)
+    if long_term_owner is not None:
+        conditions.append(Signal.long_term_owner == long_term_owner)
+    if city is not None:
+        conditions.append(Property.city.ilike(city))
+    return conditions
+
+
+async def _fetch_property_detail_row(session: AsyncSession, condition) -> tuple[Property, Signal, Score]:
     stmt = (
         select(Property, Signal, Score)
         .join(Signal, Signal.property_id == Property.id)
         .join(Score, Score.property_id == Property.id)
-        .where(Property.id == prop_uuid)
+        .where(condition)
     )
 
     result = await session.execute(stmt)
     row = result.one_or_none()
-
     if row is None:
         raise HTTPException(status_code=404, detail="Property not found.")
+    return row
 
+
+def _build_property_detail_response(row: tuple[Property, Signal, Score]) -> PropertyDetailResponse:
     prop, signal, score = row
 
     return PropertyDetailResponse(
@@ -245,29 +291,3 @@ async def get_property_detail(
         created_at=prop.created_at,
         updated_at=prop.updated_at,
     )
-
-
-# ââ Internal helpers ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-
-def _build_filter_conditions(
-    min_score: Optional[int],
-    absentee_owner: Optional[bool],
-    long_term_owner: Optional[bool],
-    city: Optional[str],
-) -> list:
-    """
-    Build a list of SQLAlchemy WHERE clause conditions from filter params.
-
-    Each condition is appended only when the corresponding param is not None.
-    Pass the returned list directly to `.where(*conditions)`.
-    """
-    conditions = []
-    if min_score is not None:
-        conditions.append(Score.score >= min_score)
-    if absentee_owner is not None:
-        conditions.append(Signal.absentee_owner == absentee_owner)
-    if long_term_owner is not None:
-        conditions.append(Signal.long_term_owner == long_term_owner)
-    if city is not None:
-        conditions.append(Property.city.ilike(city))
-    return conditions

@@ -38,7 +38,7 @@ from app.models.property import Property
 from app.models.score import Score
 from app.models.signal import Signal
 
-router = APIRouter(prefix="/api", tags=["export"])
+router = APIRouter(tags=["export"])
 
 # Rank values the API accepts — validated explicitly to give a clean 422.
 _VALID_RANKS = {"A", "B", "C"}

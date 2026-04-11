@@ -1,11 +1,14 @@
 'use client';
 import { useState } from 'react';
 
+import { getClientApiBaseUrl } from '../../lib/api';
+
 interface IngestResult {
   status: string;
   fetched?: number;
   upserted?: number;
   signals?: { processed?: number; error?: string };
+  scoring?: { processed?: number; errors?: number };
   elapsed_seconds?: number;
   sample?: unknown[];
   error?: string;
@@ -29,7 +32,7 @@ export default function IngestPage() {
       if (dryRun) params.set('dry_run', 'true');
       if (delinquentOnly) params.set('delinquent_only', 'true');
       if (limit) params.set('limit', limit);
-      const res = await fetch(`/api/ingest/run?${params}`, {
+      const res = await fetch(`${getClientApiBaseUrl()}/api/ingest/run?${params}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -110,7 +113,7 @@ export default function IngestPage() {
             <h2 className="text-white font-semibold">{result.status === 'dry_run' ? 'Dry Run Complete' : 'Ingestion Complete'}</h2>
             {result.elapsed_seconds && <span className="text-gray-400 text-xs ml-auto">{result.elapsed_seconds}s</span>}
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <div className="bg-gray-700 rounded p-3 text-center">
               <p className="text-2xl font-bold text-white">{result.fetched ?? '\u2014'}</p>
               <p className="text-gray-400 text-xs mt-1">Fetched</p>
@@ -124,6 +127,12 @@ export default function IngestPage() {
                 {typeof result.signals === 'object' && result.signals && 'processed' in result.signals ? result.signals.processed : '\u2014'}
               </p>
               <p className="text-gray-400 text-xs mt-1">Signals run</p>
+            </div>
+            <div className="bg-gray-700 rounded p-3 text-center">
+              <p className="text-2xl font-bold text-blue-400">
+                {typeof result.scoring === 'object' && result.scoring && 'processed' in result.scoring ? result.scoring.processed : '\u2014'}
+              </p>
+              <p className="text-gray-400 text-xs mt-1">Scored</p>
             </div>
           </div>
           {result.sample && result.sample.length > 0 && (

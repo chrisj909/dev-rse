@@ -2,12 +2,17 @@
 RSE Core Configuration
 Loads settings from environment / .env file via pydantic-settings.
 """
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_ROOT_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ROOT_ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -60,5 +65,12 @@ class Settings(BaseSettings):
 
     # Ingest security
     cron_secret: str = ""
+
+    # Frontend integration
+    cors_allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    def get_cors_allowed_origins(self) -> list[str]:
+        """Return configured CORS origins as a normalized list."""
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
 settings = Settings()

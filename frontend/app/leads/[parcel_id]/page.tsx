@@ -1,20 +1,28 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-interface Lead {
+import { getServerApiBaseUrl } from '../../../lib/api';
+
+interface LeadDetail {
+  property_id: string;
   parcel_id: string;
   address: string;
   city: string;
   owner_name: string;
-  score: number;
-  rank: string;
-  signal_count: number;
-  last_updated: string;
+  mailing_address: string | null;
+  assessed_value: number | null;
+  signals: Record<string, boolean>;
+  score: {
+    score: number;
+    rank: string;
+    reason: string[];
+    last_updated: string;
+  };
 }
 
-async function getLead(parcel_id: string): Promise<Lead | null> {
+async function getLead(parcel_id: string): Promise<LeadDetail | null> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
+    const baseUrl = getServerApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/leads/${parcel_id}`, { cache: 'no-store' });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -37,9 +45,11 @@ function RankBadge({ rank }: { rank: string }) {
   );
 }
 
-export default async function PropertyDetail({ params }: { params: { parcel_id: string } }) {
-  const lead = await getLead(params.parcel_id);
+export default async function PropertyDetail({ params }: { params: Promise<{ parcel_id: string }> }) {
+  const { parcel_id } = await params;
+  const lead = await getLead(parcel_id);
   if (!lead) notFound();
+  const activeSignals = Object.entries(lead.signals).filter(([, isActive]) => Boolean(isActive));
 
   return (
     <div className="p-6 max-w-2xl space-y-6">
@@ -63,22 +73,45 @@ export default async function PropertyDetail({ params }: { params: { parcel_id: 
         </div>
         <div className="flex justify-between items-center px-5 py-4">
           <span className="text-gray-400">Score</span>
-          <span className="text-white text-xl font-bold font-mono">{lead.score}</span>
+          <span className="text-white text-xl font-bold font-mono">{lead.score.score}</span>
         </div>
         <div className="flex justify-between items-center px-5 py-4">
           <span className="text-gray-400">Rank</span>
-          <RankBadge rank={lead.rank} />
+          <RankBadge rank={lead.score.rank} />
         </div>
         <div className="flex justify-between px-5 py-4">
           <span className="text-gray-400">Signals Detected</span>
-          <span className="text-white font-medium">{lead.signal_count}</span>
+          <span className="text-white font-medium">{activeSignals.length}</span>
+        </div>
+        <div className="flex justify-between px-5 py-4">
+          <span className="text-gray-400">Mailing Address</span>
+          <span className="text-white font-medium">{lead.mailing_address ?? '—'}</span>
+        </div>
+        <div className="flex justify-between px-5 py-4">
+          <span className="text-gray-400">Assessed Value</span>
+          <span className="text-white font-medium">{lead.assessed_value != null ? `$${lead.assessed_value.toLocaleString()}` : '—'}</span>
         </div>
         <div className="flex justify-between px-5 py-4">
           <span className="text-gray-400">Last Updated</span>
           <span className="text-gray-300 text-sm">
-            {lead.last_updated ? new Date(lead.last_updated).toLocaleString() : '—'}
+            {lead.score.last_updated ? new Date(lead.score.last_updated).toLocaleString() : '—'}
           </span>
         </div>
+      </div>
+
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-5 space-y-3">
+        <h2 className="text-white font-semibold text-sm uppercase tracking-wide">Active Signals</h2>
+        {activeSignals.length === 0 ? (
+          <p className="text-gray-400 text-sm">No active signals on this property.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {activeSignals.map(([signalName]) => (
+              <span key={signalName} className="rounded-full bg-blue-600/20 px-3 py-1 text-sm text-blue-200">
+                {signalName.replaceAll('_', ' ')}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

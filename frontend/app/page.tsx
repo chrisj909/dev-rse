@@ -2,6 +2,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 
+import { getClientApiBaseUrl } from '../lib/api';
+
 interface Lead {
   parcel_id: string;
   address: string;
@@ -10,6 +12,7 @@ interface Lead {
   score: number;
   rank: string;
   signal_count: number;
+  signals: string[];
   last_updated: string;
 }
 
@@ -34,7 +37,7 @@ export default function Dashboard() {
 
   const fetchLeads = useCallback(async () => {
     try {
-      const res = await fetch('/api/leads');
+      const res = await fetch(`${getClientApiBaseUrl()}/api/leads`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setLeads(Array.isArray(data) ? data : (data.leads ?? []));

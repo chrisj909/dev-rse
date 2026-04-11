@@ -42,6 +42,7 @@ class LeadResponse(BaseModel):
     score: int
     rank: str                    # "A" | "B" | "C"
     signals: list[str]           # active signal names only
+    signal_count: int = 0
     last_updated: datetime
 
 
