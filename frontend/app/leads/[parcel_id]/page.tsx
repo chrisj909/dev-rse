@@ -26,7 +26,7 @@ interface LeadDetail {
 async function getLead(parcel_id: string): Promise<LeadDetail | null> {
   try {
     const baseUrl = await getServerApiBaseUrl();
-    const res = await fetch(`${baseUrl}/api/leads/${parcel_id}`, { cache: 'no-store' });
+    const res = await fetch(`${baseUrl}/api/leads/${encodeURIComponent(parcel_id)}`, { cache: 'no-store' });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
