@@ -138,7 +138,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
               paginated.map(lead => (
                 <tr
                   key={lead.parcel_id}
-                  onClick={() => router.push(`/leads/${encodeURIComponent(lead.parcel_id)}`)}
+                  onClick={() => router.push(`/property?parcel_id=${encodeURIComponent(lead.parcel_id)}`)}
                   className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
                   <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>

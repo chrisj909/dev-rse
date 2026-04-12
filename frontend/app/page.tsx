@@ -133,7 +133,7 @@ export default function Dashboard() {
               {top5.map(lead => (
                 <tr
                   key={lead.parcel_id}
-                  onClick={() => window.location.href = `/leads/${encodeURIComponent(lead.parcel_id)}`}
+                  onClick={() => window.location.href = `/property?parcel_id=${encodeURIComponent(lead.parcel_id)}`}
                   className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
                   <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>
