@@ -16,20 +16,33 @@ interface Lead {
   last_updated: string;
 }
 
-async function getLeads(): Promise<Lead[]> {
+interface LeadsResponse {
+  leads: Lead[];
+  total: number;
+}
+
+const LEADS_FETCH_LIMIT = 1000;
+
+async function getLeads(): Promise<LeadsResponse> {
   try {
     const baseUrl = await getServerApiBaseUrl();
-    const res = await fetch(`${baseUrl}/api/leads`, { cache: 'no-store' });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : (data.leads ?? []);
+    const res = await fetch(`${baseUrl}/api/leads?limit=${LEADS_FETCH_LIMIT}`, { cache: 'no-store' });
+    if (!res.ok) return { leads: [], total: 0 };
+    const data: LeadsResponse | Lead[] = await res.json();
+    if (Array.isArray(data)) {
+      return { leads: data, total: data.length };
+    }
+    return {
+      leads: data.leads ?? [],
+      total: data.total ?? data.leads?.length ?? 0,
+    };
   } catch {
-    return [];
+    return { leads: [], total: 0 };
   }
 }
 
 export default async function LeadsPage() {
-  const leads = await getLeads();
+  const { leads, total } = await getLeads();
 
   return (
     <div className="p-6 space-y-6">
@@ -37,7 +50,7 @@ export default async function LeadsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Lead Feed</h1>
           <p className="text-slate-500 text-sm mt-1">
-            {leads.length > 0 ? `${leads.length} properties scored` : 'No leads yet'}
+            {total > 0 ? `${total} properties scored` : 'No leads yet'}
           </p>
         </div>
       </div>

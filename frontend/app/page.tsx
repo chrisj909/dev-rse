@@ -16,6 +16,13 @@ interface Lead {
   last_updated: string;
 }
 
+interface LeadsResponse {
+  leads: Lead[];
+  total: number;
+}
+
+const LEADS_FETCH_LIMIT = 1000;
+
 function RankBadge({ rank }: { rank: string }) {
   const colors: Record<string, string> = {
     A: 'bg-green-600 text-white',
@@ -31,16 +38,23 @@ function RankBadge({ rank }: { rank: string }) {
 
 export default function Dashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const fetchLeads = useCallback(async () => {
     try {
-      const res = await fetch(`${getClientApiBaseUrl()}/api/leads`);
+      const res = await fetch(`${getClientApiBaseUrl()}/api/leads?limit=${LEADS_FETCH_LIMIT}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setLeads(Array.isArray(data) ? data : (data.leads ?? []));
+      const data: LeadsResponse | Lead[] = await res.json();
+      if (Array.isArray(data)) {
+        setLeads(data);
+        setTotal(data.length);
+      } else {
+        setLeads(data.leads ?? []);
+        setTotal(data.total ?? data.leads?.length ?? 0);
+      }
       setLastRefresh(new Date());
       setError(null);
     } catch (e: unknown) {
@@ -56,7 +70,7 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchLeads]);
 
-  const totalProperties = leads.length;
+  const totalProperties = total;
   const rankACount = leads.filter(l => l.rank === 'A').length;
   const totalSignals = leads.reduce((sum, l) => sum + (l.signal_count ?? 0), 0);
   const top5 = [...leads].sort((a, b) => b.score - a.score).slice(0, 5);

@@ -96,7 +96,7 @@ async def get_top_leads(
     absentee_owner: Optional[bool] = Query(default=None, description="Filter to absentee-owned properties only."),
     long_term_owner: Optional[bool] = Query(default=None, description="Filter to long-term owner properties."),
     city: Optional[str] = Query(default=None, description="Filter by city name (case-insensitive)."),
-    limit: int = Query(default=50, ge=1, le=200, description="Max results to return (default 50, max 200)."),
+    limit: int = Query(default=50, ge=1, le=1000, description="Max results to return (default 50, max 1000)."),
     session: AsyncSession = Depends(get_db),
 ) -> LeadsListResponse:
     """
@@ -145,7 +145,7 @@ async def get_top_leads(
 
 @router.get("/leads/new", response_model=LeadsListResponse)
 async def get_new_leads(
-    limit: int = Query(default=50, ge=1, le=200, description="Max results (default 50, max 200)."),
+    limit: int = Query(default=50, ge=1, le=1000, description="Max results (default 50, max 1000)."),
     session: AsyncSession = Depends(get_db),
 ) -> LeadsListResponse:
     """

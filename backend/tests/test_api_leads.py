@@ -513,8 +513,13 @@ class TestGetTopLeadsLimit:
         resp = test_client.get("/api/leads/top?limit=200")
         assert resp.status_code == 200
 
-    def test_limit_201_rejected(self, test_client, mock_session):
-        resp = test_client.get("/api/leads/top?limit=201")
+    def test_limit_1000_accepted(self, test_client, mock_session):
+        _setup_list_mock(mock_session, rows=[], count=0)
+        resp = test_client.get("/api/leads/top?limit=1000")
+        assert resp.status_code == 200
+
+    def test_limit_1001_rejected(self, test_client, mock_session):
+        resp = test_client.get("/api/leads/top?limit=1001")
         assert resp.status_code == 422
 
     def test_limit_0_rejected(self, test_client, mock_session):
@@ -624,8 +629,13 @@ class TestGetNewLeadsLimit:
         resp = test_client.get("/api/leads/new?limit=200")
         assert resp.status_code == 200
 
-    def test_limit_201_rejected(self, test_client, mock_session):
-        resp = test_client.get("/api/leads/new?limit=201")
+    def test_limit_1000_accepted(self, test_client, mock_session):
+        _setup_list_mock(mock_session, rows=[], count=0)
+        resp = test_client.get("/api/leads/new?limit=1000")
+        assert resp.status_code == 200
+
+    def test_limit_1001_rejected(self, test_client, mock_session):
+        resp = test_client.get("/api/leads/new?limit=1001")
         assert resp.status_code == 422
 
     def test_limit_0_rejected(self, test_client, mock_session):
