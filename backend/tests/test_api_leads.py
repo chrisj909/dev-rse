@@ -320,13 +320,21 @@ class TestGetTopLeadsWithData:
         lead = test_client.get("/api/leads/top").json()["leads"][0]
         assert lead["owner_name"] is None
 
-    def test_address_null(self, test_client, mock_session):
-        prop = make_mock_property(address=None)
+    def test_address_falls_back_to_mailing_address(self, test_client, mock_session):
+        prop = make_mock_property(address=None, raw_address=None, mailing_address="456 OTHER ST")
         sig = make_mock_signal()
         sc = make_mock_score()
         _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
         lead = test_client.get("/api/leads/top").json()["leads"][0]
-        assert lead["address"] is None
+        assert lead["address"] == "456 OTHER ST"
+
+    def test_address_falls_back_to_raw_address(self, test_client, mock_session):
+        prop = make_mock_property(address=None, raw_address="123 Main Street", mailing_address=None)
+        sig = make_mock_signal()
+        sc = make_mock_score()
+        _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
+        lead = test_client.get("/api/leads/top").json()["leads"][0]
+        assert lead["address"] == "123 Main Street"
 
     def test_city_null(self, test_client, mock_session):
         prop = make_mock_property(city=None)

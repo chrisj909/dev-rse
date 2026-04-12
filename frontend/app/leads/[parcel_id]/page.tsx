@@ -1,16 +1,19 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { getServerApiBaseUrl } from '../../../lib/api';
+import { getServerApiBaseUrl } from '../../../lib/server-api';
+
+export const dynamic = 'force-dynamic';
 
 interface LeadDetail {
   property_id: string;
   parcel_id: string;
-  address: string;
-  city: string;
-  owner_name: string;
+  address: string | null;
+  city: string | null;
+  owner_name: string | null;
   mailing_address: string | null;
   assessed_value: number | null;
+  state: string;
   signals: Record<string, boolean>;
   score: {
     score: number;
@@ -22,7 +25,7 @@ interface LeadDetail {
 
 async function getLead(parcel_id: string): Promise<LeadDetail | null> {
   try {
-    const baseUrl = getServerApiBaseUrl();
+    const baseUrl = await getServerApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/leads/${parcel_id}`, { cache: 'no-store' });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -59,7 +62,7 @@ export default async function PropertyDetail({ params }: { params: Promise<{ par
 
       <div>
         <h1 className="text-2xl font-bold text-slate-900">{lead.address || 'Address unavailable'}</h1>
-        <p className="text-slate-500 mt-1">{lead.city}, AL</p>
+        <p className="text-slate-500 mt-1">{[lead.city, lead.state].filter(Boolean).join(', ') || 'Location unavailable'}</p>
       </div>
 
       <div className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">

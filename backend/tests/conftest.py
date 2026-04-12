@@ -52,6 +52,7 @@ def make_mock_property(
     zip_code: str | None = "35244",
     owner_name: str | None = "JOHN DOE",
     mailing_address: str | None = "456 OTHER ST",
+    raw_mailing_address: str | None = "456 Other St",
     raw_address: str | None = "123 Main Street",
     last_sale_date: date | None = None,
     assessed_value: float | None = 150000.00,
@@ -67,6 +68,7 @@ def make_mock_property(
     prop.zip = zip_code
     prop.owner_name = owner_name
     prop.mailing_address = mailing_address
+    prop.raw_mailing_address = raw_mailing_address
     prop.last_sale_date = last_sale_date
     prop.assessed_value = assessed_value
     prop.created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)

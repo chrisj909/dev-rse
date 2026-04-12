@@ -1,12 +1,14 @@
 import LeadsTable from '../../components/LeadsTable';
 
-import { getServerApiBaseUrl } from '../../lib/api';
+import { getServerApiBaseUrl } from '../../lib/server-api';
+
+export const dynamic = 'force-dynamic';
 
 interface Lead {
   parcel_id: string;
-  address: string;
-  city: string;
-  owner_name: string;
+  address: string | null;
+  city: string | null;
+  owner_name: string | null;
   score: number;
   rank: string;
   signal_count: number;
@@ -16,7 +18,7 @@ interface Lead {
 
 async function getLeads(): Promise<Lead[]> {
   try {
-    const baseUrl = getServerApiBaseUrl();
+    const baseUrl = await getServerApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/leads`, { cache: 'no-store' });
     if (!res.ok) return [];
     const data = await res.json();

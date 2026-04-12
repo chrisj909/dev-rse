@@ -74,7 +74,7 @@ def _build_lead(prop: Property, signal: Signal, score: Score) -> LeadResponse:
     return LeadResponse(
         property_id=str(getattr(prop, "id", "")),
         parcel_id=str(getattr(prop, "parcel_id", "") or ""),
-        address=_coerce_text(getattr(prop, "address", None)),
+        address=_coerce_display_address(prop),
         city=_coerce_text(getattr(prop, "city", None)),
         state=_coerce_state(getattr(prop, "state", None)),
         zip=_coerce_text(getattr(prop, "zip", None)),
@@ -266,7 +266,7 @@ def _build_property_detail_response(row: tuple[Property, Signal, Score]) -> Prop
     return PropertyDetailResponse(
         property_id=str(getattr(prop, "id", "")),
         parcel_id=str(getattr(prop, "parcel_id", "") or ""),
-        address=_coerce_text(getattr(prop, "address", None)),
+        address=_coerce_display_address(prop),
         raw_address=_coerce_text(getattr(prop, "raw_address", None)),
         city=_coerce_text(getattr(prop, "city", None)),
         state=_coerce_state(getattr(prop, "state", None)),
@@ -309,6 +309,15 @@ def _build_leads(rows: list[tuple[Property, Signal, Score]]) -> list[LeadRespons
                 exc,
             )
     return leads
+
+
+def _coerce_display_address(prop: Property) -> str | None:
+    return (
+        _coerce_text(getattr(prop, "address", None))
+        or _coerce_text(getattr(prop, "raw_address", None))
+        or _coerce_text(getattr(prop, "mailing_address", None))
+        or _coerce_text(getattr(prop, "raw_mailing_address", None))
+    )
 
 
 def _coerce_text(value: object) -> str | None:

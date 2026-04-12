@@ -4,9 +4,9 @@ import { useRouter } from 'next/navigation';
 
 interface Lead {
   parcel_id: string;
-  address: string;
-  city: string;
-  owner_name: string;
+  address: string | null;
+  city: string | null;
+  owner_name: string | null;
   score: number;
   rank: string;
   signal_count: number;
@@ -50,6 +50,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
       const q = search.toLowerCase();
       result = result.filter(l =>
         l.address?.toLowerCase().includes(q) || l.owner_name?.toLowerCase().includes(q)
+        || l.parcel_id.toLowerCase().includes(q)
       );
     }
     if (rankFilter !== 'All') {
@@ -141,8 +142,8 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
                   className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
                   <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>
-                  <td className="px-5 py-3 text-gray-300">{lead.city}</td>
-                  <td className="px-5 py-3 text-gray-300">{lead.owner_name}</td>
+                  <td className="px-5 py-3 text-gray-300">{lead.city ?? '—'}</td>
+                  <td className="px-5 py-3 text-gray-300">{lead.owner_name ?? '—'}</td>
                   <td className="px-5 py-3 text-right font-mono text-white">{lead.score}</td>
                   <td className="px-5 py-3 text-center"><RankBadge rank={lead.rank} /></td>
                   <td className="px-5 py-3 text-right text-gray-300">{lead.signal_count}</td>
