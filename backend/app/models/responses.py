@@ -51,6 +51,8 @@ class LeadsListResponse(BaseModel):
     """Paginated list of leads plus the total matching count (before limit)."""
     leads: list[LeadResponse]
     total: int
+    limit: int = 50
+    offset: int = 0
 
 
 # ── Signal detail (boolean map) ───────────────────────────────────────────────

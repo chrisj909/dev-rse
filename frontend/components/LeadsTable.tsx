@@ -1,6 +1,6 @@
 'use client';
-import { useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useTransition } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 interface Lead {
   parcel_id: string;
@@ -12,6 +12,22 @@ interface Lead {
   rank: string;
   signal_count: number;
   last_updated: string;
+}
+
+interface FilterState {
+  search?: string;
+  city?: string;
+  owner?: string;
+  parcel_id?: string;
+  min_score?: string;
+  max_score?: string;
+  min_value?: string;
+  max_value?: string;
+  rank?: string;
+  sort_by?: string;
+  sort_dir?: string;
+  page?: string;
+  page_size?: string;
 }
 
 type SortKey = 'score' | 'address' | 'city' | 'assessed_value' | 'last_updated';
@@ -35,22 +51,37 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; s
   return <span className="text-blue-400 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
 }
 
-const PAGE_SIZE = 25;
-
-export default function LeadsTable({ leads }: { leads: Lead[] }) {
+export default function LeadsTable({
+  leads,
+  total,
+  pageSize,
+  offset,
+  initialFilters,
+}: {
+  leads: Lead[];
+  total: number;
+  pageSize: number;
+  offset: number;
+  initialFilters: FilterState;
+}) {
   const router = useRouter();
-  const [search, setSearch] = useState('');
-  const [cityFilter, setCityFilter] = useState('');
-  const [ownerFilter, setOwnerFilter] = useState('');
-  const [parcelFilter, setParcelFilter] = useState('');
-  const [minScore, setMinScore] = useState('');
-  const [maxScore, setMaxScore] = useState('');
-  const [minValue, setMinValue] = useState('');
-  const [maxValue, setMaxValue] = useState('');
-  const [rankFilter, setRankFilter] = useState<string>('All');
-  const [sortKey, setSortKey] = useState<SortKey>('score');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
-  const [page, setPage] = useState(1);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
+  const [search, setSearch] = useState(initialFilters.search ?? '');
+  const [cityFilter, setCityFilter] = useState(initialFilters.city ?? '');
+  const [ownerFilter, setOwnerFilter] = useState(initialFilters.owner ?? '');
+  const [parcelFilter, setParcelFilter] = useState(initialFilters.parcel_id ?? '');
+  const [minScore, setMinScore] = useState(initialFilters.min_score ?? '');
+  const [maxScore, setMaxScore] = useState(initialFilters.max_score ?? '');
+  const [minValue, setMinValue] = useState(initialFilters.min_value ?? '');
+  const [maxValue, setMaxValue] = useState(initialFilters.max_value ?? '');
+  const [rankFilter, setRankFilter] = useState<string>(initialFilters.rank ?? 'All');
+  const [sortKey, setSortKey] = useState<SortKey>((initialFilters.sort_by as SortKey) ?? 'score');
+  const [sortDir, setSortDir] = useState<SortDir>((initialFilters.sort_dir as SortDir) ?? 'desc');
+
+  const page = Math.floor(offset / pageSize) + 1;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const activeFilterCount = [
     search,
@@ -64,86 +95,37 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
     rankFilter !== 'All' ? rankFilter : '',
   ].filter(Boolean).length;
 
-  const filtered = useMemo(() => {
-    let result = leads;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(l =>
-        l.address?.toLowerCase().includes(q) || l.owner_name?.toLowerCase().includes(q)
-        || l.parcel_id.toLowerCase().includes(q)
-      );
-    }
-    if (cityFilter.trim()) {
-      const q = cityFilter.toLowerCase();
-      result = result.filter(l => l.city?.toLowerCase().includes(q));
-    }
-    if (ownerFilter.trim()) {
-      const q = ownerFilter.toLowerCase();
-      result = result.filter(l => l.owner_name?.toLowerCase().includes(q));
-    }
-    if (parcelFilter.trim()) {
-      const q = parcelFilter.toLowerCase();
-      result = result.filter(l => l.parcel_id.toLowerCase().includes(q));
-    }
-    if (rankFilter !== 'All') {
-      result = result.filter(l => l.rank === rankFilter);
-    }
-    if (minScore.trim()) {
-      const floor = Number(minScore);
-      if (!Number.isNaN(floor)) {
-        result = result.filter(l => l.score >= floor);
-      }
-    }
-    if (maxScore.trim()) {
-      const ceiling = Number(maxScore);
-      if (!Number.isNaN(ceiling)) {
-        result = result.filter(l => l.score <= ceiling);
-      }
-    }
-    if (minValue.trim()) {
-      const floor = Number(minValue);
-      if (!Number.isNaN(floor)) {
-        result = result.filter(l => (l.assessed_value ?? -1) >= floor);
-      }
-    }
-    if (maxValue.trim()) {
-      const ceiling = Number(maxValue);
-      if (!Number.isNaN(ceiling)) {
-        result = result.filter(l => (l.assessed_value ?? Number.MAX_SAFE_INTEGER) <= ceiling);
-      }
-    }
-    result = [...result].sort((a, b) => {
-      let av: string | number = a[sortKey] ?? '';
-      let bv: string | number = b[sortKey] ?? '';
-      if (typeof av === 'string') av = av.toLowerCase();
-      if (typeof bv === 'string') bv = bv.toLowerCase();
-      if (av < bv) return sortDir === 'asc' ? -1 : 1;
-      if (av > bv) return sortDir === 'asc' ? 1 : -1;
-      return 0;
-    });
-    return result;
-  }, [
-    leads,
-    search,
-    cityFilter,
-    ownerFilter,
-    parcelFilter,
-    rankFilter,
-    minScore,
-    maxScore,
-    minValue,
-    maxValue,
-    sortKey,
-    sortDir,
-  ]);
+  const currentPageCount = leads.length;
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  function buildQuery(overrides: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(overrides)) {
+      if (value == null || value === '' || value === 'All') {
+        params.delete(key);
+      } else {
+        params.set(key, value);
+      }
+    }
+    return params.toString();
+  }
+
+  function navigate(overrides: Record<string, string | null>) {
+    const query = buildQuery(overrides);
+    startTransition(() => {
+      router.push(query ? `${pathname}?${query}` : pathname);
+    });
+  }
 
   function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortKey(key); setSortDir('desc'); }
-    setPage(1);
+    let nextDir: SortDir = 'desc';
+    if (sortKey === key) {
+      nextDir = sortDir === 'asc' ? 'desc' : 'asc';
+      setSortDir(nextDir);
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+    navigate({ sort_by: key, sort_dir: nextDir, page: '1' });
   }
 
   function formatCurrency(value: number | null) {
@@ -165,7 +147,41 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
     setMinValue('');
     setMaxValue('');
     setRankFilter('All');
-    setPage(1);
+    setSortKey('score');
+    setSortDir('desc');
+    navigate({
+      search: null,
+      city: null,
+      owner: null,
+      parcel_id: null,
+      min_score: null,
+      max_score: null,
+      min_value: null,
+      max_value: null,
+      rank: null,
+      sort_by: null,
+      sort_dir: null,
+      page: null,
+      page_size: null,
+    });
+  }
+
+  function applyFilters() {
+    navigate({
+      search,
+      city: cityFilter,
+      owner: ownerFilter,
+      parcel_id: parcelFilter,
+      min_score: minScore,
+      max_score: maxScore,
+      min_value: minValue,
+      max_value: maxValue,
+      rank: rankFilter,
+      sort_by: sortKey,
+      sort_dir: sortDir,
+      page: '1',
+      page_size: String(pageSize),
+    });
   }
 
   return (
@@ -179,11 +195,18 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
           </div>
           <div className="flex items-center gap-3">
             <div className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
-              {filtered.length} matches
+              {total} matches
             </div>
             <div className="rounded-full border border-gray-600 bg-gray-700/80 px-3 py-1 text-xs font-medium text-gray-300">
               {activeFilterCount} active filters
             </div>
+            <button
+              onClick={applyFilters}
+              disabled={isPending}
+              className="rounded-full bg-blue-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-60"
+            >
+              {isPending ? 'Updating...' : 'Apply'}
+            </button>
             <button
               onClick={clearFilters}
               className="rounded-full border border-gray-600 px-3 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-gray-500 hover:bg-gray-700"
@@ -200,7 +223,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
               type="text"
               placeholder="Address, owner, or parcel"
               value={search}
-              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              onChange={e => setSearch(e.target.value)}
               className="w-full rounded-xl border border-gray-600 bg-gray-900/80 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
             />
           </label>
@@ -211,7 +234,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
               type="text"
               placeholder="Leeds, Birmingham..."
               value={cityFilter}
-              onChange={e => { setCityFilter(e.target.value); setPage(1); }}
+              onChange={e => setCityFilter(e.target.value)}
               className="w-full rounded-xl border border-gray-600 bg-gray-900/80 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
             />
           </label>
@@ -222,7 +245,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
               type="text"
               placeholder="Owner name"
               value={ownerFilter}
-              onChange={e => { setOwnerFilter(e.target.value); setPage(1); }}
+              onChange={e => setOwnerFilter(e.target.value)}
               className="w-full rounded-xl border border-gray-600 bg-gray-900/80 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
             />
           </label>
@@ -233,7 +256,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
               type="text"
               placeholder="01 6 23 ..."
               value={parcelFilter}
-              onChange={e => { setParcelFilter(e.target.value); setPage(1); }}
+              onChange={e => setParcelFilter(e.target.value)}
               className="w-full rounded-xl border border-gray-600 bg-gray-900/80 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
             />
           </label>
@@ -246,7 +269,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
               type="number"
               placeholder="0"
               value={minScore}
-              onChange={e => { setMinScore(e.target.value); setPage(1); }}
+              onChange={e => setMinScore(e.target.value)}
               className="w-full rounded-xl border border-gray-600 bg-gray-900/80 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
             />
           </label>
@@ -257,7 +280,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
               type="number"
               placeholder="100"
               value={maxScore}
-              onChange={e => { setMaxScore(e.target.value); setPage(1); }}
+              onChange={e => setMaxScore(e.target.value)}
               className="w-full rounded-xl border border-gray-600 bg-gray-900/80 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
             />
           </label>
@@ -268,7 +291,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
               type="number"
               placeholder="50000"
               value={minValue}
-              onChange={e => { setMinValue(e.target.value); setPage(1); }}
+              onChange={e => setMinValue(e.target.value)}
               className="w-full rounded-xl border border-gray-600 bg-gray-900/80 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
             />
           </label>
@@ -279,7 +302,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
               type="number"
               placeholder="500000"
               value={maxValue}
-              onChange={e => { setMaxValue(e.target.value); setPage(1); }}
+              onChange={e => setMaxValue(e.target.value)}
               className="w-full rounded-xl border border-gray-600 bg-gray-900/80 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
             />
           </label>
@@ -290,7 +313,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
               {['All', 'A', 'B', 'C'].map(r => (
                 <button
                   key={r}
-                  onClick={() => { setRankFilter(r); setPage(1); }}
+                  onClick={() => setRankFilter(r)}
                   className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
                     rankFilter === r
                       ? 'bg-blue-600 text-white'
@@ -331,14 +354,14 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
             </tr>
           </thead>
           <tbody>
-            {paginated.length === 0 ? (
+            {leads.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-5 py-10 text-center text-gray-400">
-                  {search || rankFilter !== 'All' ? 'No leads match your filters.' : 'No leads found.'}
+                  {activeFilterCount > 0 ? 'No leads match your filters.' : 'No leads found.'}
                 </td>
               </tr>
             ) : (
-              paginated.map(lead => (
+              leads.map(lead => (
                 <tr
                   key={lead.parcel_id}
                   onClick={() => router.push(`/property?parcel_id=${encodeURIComponent(lead.parcel_id)}`)}
@@ -364,10 +387,10 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-gray-400">
-          <span>Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}</span>
+          <span>Showing {offset + 1}-{offset + currentPageCount} of {total}</span>
           <div className="flex gap-2">
             <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+              onClick={() => navigate({ page: String(Math.max(1, page - 1)), page_size: String(pageSize) })}
               disabled={page === 1}
               className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -375,7 +398,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
             </button>
             <span className="px-3 py-1">Page {page} of {totalPages}</span>
             <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              onClick={() => navigate({ page: String(Math.min(totalPages, page + 1)), page_size: String(pageSize) })}
               disabled={page === totalPages}
               className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
             >

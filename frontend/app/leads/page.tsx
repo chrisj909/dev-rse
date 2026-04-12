@@ -20,30 +20,88 @@ interface Lead {
 interface LeadsResponse {
   leads: Lead[];
   total: number;
+  limit: number;
+  offset: number;
 }
 
-const LEADS_FETCH_LIMIT = 1000;
+const DEFAULT_PAGE_SIZE = 50;
 
-async function getLeads(): Promise<LeadsResponse> {
+type LeadsPageSearchParams = {
+  page?: string;
+  page_size?: string;
+  search?: string;
+  city?: string;
+  owner?: string;
+  parcel_id?: string;
+  min_score?: string;
+  max_score?: string;
+  min_value?: string;
+  max_value?: string;
+  rank?: string;
+  sort_by?: string;
+  sort_dir?: string;
+};
+
+function buildLeadsQuery(searchParams: LeadsPageSearchParams) {
+  const page = Math.max(1, Number(searchParams.page ?? '1') || 1);
+  const pageSize = Math.min(250, Math.max(25, Number(searchParams.page_size ?? `${DEFAULT_PAGE_SIZE}`) || DEFAULT_PAGE_SIZE));
+  const query = new URLSearchParams({
+    limit: String(pageSize),
+    offset: String((page - 1) * pageSize),
+  });
+
+  const keys: Array<keyof LeadsPageSearchParams> = [
+    'search',
+    'city',
+    'owner',
+    'parcel_id',
+    'min_score',
+    'max_score',
+    'min_value',
+    'max_value',
+    'rank',
+    'sort_by',
+    'sort_dir',
+  ];
+
+  for (const key of keys) {
+    const value = searchParams[key]?.trim();
+    if (value) {
+      query.set(key, value);
+    }
+  }
+
+  return { query, page, pageSize };
+}
+
+async function getLeads(searchParams: LeadsPageSearchParams): Promise<LeadsResponse> {
   try {
     const baseUrl = await getServerApiBaseUrl();
-    const res = await fetch(`${baseUrl}/api/leads?limit=${LEADS_FETCH_LIMIT}`, { cache: 'no-store' });
-    if (!res.ok) return { leads: [], total: 0 };
+    const { query, pageSize } = buildLeadsQuery(searchParams);
+    const res = await fetch(`${baseUrl}/api/leads?${query.toString()}`, { cache: 'no-store' });
+    if (!res.ok) return { leads: [], total: 0, limit: pageSize, offset: 0 };
     const data: LeadsResponse | Lead[] = await res.json();
     if (Array.isArray(data)) {
-      return { leads: data, total: data.length };
+      return { leads: data, total: data.length, limit: pageSize, offset: 0 };
     }
     return {
       leads: data.leads ?? [],
       total: data.total ?? data.leads?.length ?? 0,
+      limit: data.limit ?? pageSize,
+      offset: data.offset ?? 0,
     };
   } catch {
-    return { leads: [], total: 0 };
+    return { leads: [], total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0 };
   }
 }
 
-export default async function LeadsPage() {
-  const { leads, total } = await getLeads();
+export default async function LeadsPage({
+  searchParams,
+}: {
+  searchParams: Promise<LeadsPageSearchParams>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const { leads, total, limit, offset } = await getLeads(resolvedSearchParams);
 
   return (
     <div className="p-6 space-y-6">
@@ -55,7 +113,7 @@ export default async function LeadsPage() {
           </p>
         </div>
       </div>
-      <LeadsTable leads={leads} />
+      <LeadsTable leads={leads} total={total} pageSize={limit} offset={offset} initialFilters={resolvedSearchParams} />
     </div>
   );
 }

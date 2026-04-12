@@ -26,7 +26,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -43,6 +43,14 @@ from app.models.signal import Signal
 
 router = APIRouter(tags=["leads"])
 log = logging.getLogger("rse.api.leads")
+
+_SORT_FIELDS = {
+    "score": Score.score,
+    "assessed_value": Property.assessed_value,
+    "last_updated": Score.last_updated,
+    "address": Property.address,
+    "city": Property.city,
+}
 
 # Ordered list of all signal column names on the Signal ORM model.
 # Order determines the canonical order of active signal names in the response.
@@ -94,10 +102,20 @@ def _build_lead(prop: Property, signal: Signal, score: Score) -> LeadResponse:
 @router.get("/leads/top", response_model=LeadsListResponse)
 async def get_top_leads(
     min_score: Optional[int] = Query(default=None, ge=0, description="Minimum score threshold (inclusive)."),
+    max_score: Optional[int] = Query(default=None, ge=0, description="Maximum score threshold (inclusive)."),
     absentee_owner: Optional[bool] = Query(default=None, description="Filter to absentee-owned properties only."),
     long_term_owner: Optional[bool] = Query(default=None, description="Filter to long-term owner properties."),
     city: Optional[str] = Query(default=None, description="Filter by city name (case-insensitive)."),
-    limit: int = Query(default=50, ge=1, le=1000, description="Max results to return (default 50, max 1000)."),
+    rank: Optional[str] = Query(default=None, description="Filter by rank band: A, B, or C."),
+    search: Optional[str] = Query(default=None, description="Search across address, owner name, and parcel ID."),
+    owner: Optional[str] = Query(default=None, description="Filter by owner name substring."),
+    parcel_id: Optional[str] = Query(default=None, description="Filter by parcel ID substring."),
+    min_value: Optional[float] = Query(default=None, ge=0, description="Minimum assessed value (inclusive)."),
+    max_value: Optional[float] = Query(default=None, ge=0, description="Maximum assessed value (inclusive)."),
+    sort_by: str = Query(default="score", description="Sort field: score, assessed_value, last_updated, address, city."),
+    sort_dir: str = Query(default="desc", description="Sort direction: asc or desc."),
+    limit: int = Query(default=50, ge=1, le=250, description="Max results to return (default 50, max 250)."),
+    offset: int = Query(default=0, ge=0, description="Result offset for pagination."),
     session: AsyncSession = Depends(get_db),
 ) -> LeadsListResponse:
     """
@@ -110,15 +128,29 @@ async def get_top_leads(
         LeadsListResponse with matched leads (up to `limit`) and the
         total count of matching records before the limit is applied.
     """
-    conditions = _build_filter_conditions(min_score, absentee_owner, long_term_owner, city)
+    conditions = _build_filter_conditions(
+        min_score=min_score,
+        max_score=max_score,
+        absentee_owner=absentee_owner,
+        long_term_owner=long_term_owner,
+        city=city,
+        rank=rank,
+        search=search,
+        owner=owner,
+        parcel_id=parcel_id,
+        min_value=min_value,
+        max_value=max_value,
+    )
+    order_by = _build_sort_expression(sort_by, sort_dir)
 
     # Data query â ordered by score DESC
     data_stmt = (
         select(Property, Signal, Score)
         .join(Signal, Signal.property_id == Property.id)
         .join(Score, Score.property_id == Property.id)
-        .order_by(Score.score.desc())
+        .order_by(*order_by)
         .limit(limit)
+        .offset(offset)
     )
     if conditions:
         data_stmt = data_stmt.where(*conditions)
@@ -139,7 +171,7 @@ async def get_top_leads(
     total: int = count_result.scalar() or 0
 
     leads = _build_leads(rows)
-    return LeadsListResponse(leads=leads, total=total)
+    return LeadsListResponse(leads=leads, total=total, limit=limit, offset=offset)
 
 
 # ââ GET /api/leads/new ââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
@@ -224,9 +256,16 @@ async def get_property_detail_by_parcel_id(
 
 def _build_filter_conditions(
     min_score: Optional[int],
+    max_score: Optional[int],
     absentee_owner: Optional[bool],
     long_term_owner: Optional[bool],
     city: Optional[str],
+    rank: Optional[str],
+    search: Optional[str],
+    owner: Optional[str],
+    parcel_id: Optional[str],
+    min_value: Optional[float],
+    max_value: Optional[float],
 ) -> list:
     """
     Build a list of SQLAlchemy WHERE clause conditions from filter params.
@@ -237,13 +276,44 @@ def _build_filter_conditions(
     conditions = []
     if min_score is not None:
         conditions.append(Score.score >= min_score)
+    if max_score is not None:
+        conditions.append(Score.score <= max_score)
     if absentee_owner is not None:
         conditions.append(Signal.absentee_owner == absentee_owner)
     if long_term_owner is not None:
         conditions.append(Signal.long_term_owner == long_term_owner)
     if city is not None:
-        conditions.append(Property.city.ilike(city))
+        conditions.append(Property.city.ilike(f"%{city}%"))
+    if rank is not None and rank.upper() in {"A", "B", "C"}:
+        conditions.append(Score.rank == rank.upper())
+    if search:
+        needle = f"%{search}%"
+        conditions.append(
+            or_(
+                Property.address.ilike(needle),
+                Property.raw_address.ilike(needle),
+                Property.owner_name.ilike(needle),
+                Property.parcel_id.ilike(needle),
+                Property.mailing_address.ilike(needle),
+            )
+        )
+    if owner:
+        conditions.append(Property.owner_name.ilike(f"%{owner}%"))
+    if parcel_id:
+        conditions.append(Property.parcel_id.ilike(f"%{parcel_id}%"))
+    if min_value is not None:
+        conditions.append(Property.assessed_value >= min_value)
+    if max_value is not None:
+        conditions.append(Property.assessed_value <= max_value)
     return conditions
+
+
+def _build_sort_expression(sort_by: str, sort_dir: str) -> tuple:
+    sort_field = _SORT_FIELDS.get(sort_by, Score.score)
+    direction = sort_dir.lower()
+    primary = sort_field.asc() if direction == "asc" else sort_field.desc()
+    secondary = Score.score.desc()
+    return primary, secondary
 
 
 async def _fetch_property_detail_row(session: AsyncSession, condition) -> tuple[Property, Signal, Score]:
