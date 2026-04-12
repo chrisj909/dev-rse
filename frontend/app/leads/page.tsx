@@ -9,6 +9,7 @@ interface Lead {
   address: string | null;
   city: string | null;
   owner_name: string | null;
+  assessed_value: number | null;
   score: number;
   rank: string;
   signal_count: number;

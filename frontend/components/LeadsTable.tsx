@@ -7,13 +7,14 @@ interface Lead {
   address: string | null;
   city: string | null;
   owner_name: string | null;
+  assessed_value: number | null;
   score: number;
   rank: string;
   signal_count: number;
   last_updated: string;
 }
 
-type SortKey = 'score' | 'address' | 'city' | 'last_updated';
+type SortKey = 'score' | 'address' | 'city' | 'assessed_value' | 'last_updated';
 type SortDir = 'asc' | 'desc';
 
 function RankBadge({ rank }: { rank: string }) {
@@ -77,6 +78,15 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
     setPage(1);
   }
 
+  function formatCurrency(value: number | null) {
+    if (value == null) return '—';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(value);
+  }
+
   return (
     <div className="space-y-4">
       {/* Controls */}
@@ -117,6 +127,9 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
                 City <SortIcon col="city" sortKey={sortKey} sortDir={sortDir} />
               </th>
               <th className="px-5 py-3 text-left">Owner</th>
+              <th className="px-5 py-3 text-right cursor-pointer hover:text-white" onClick={() => toggleSort('assessed_value')}>
+                Property Value <SortIcon col="assessed_value" sortKey={sortKey} sortDir={sortDir} />
+              </th>
               <th className="px-5 py-3 text-right cursor-pointer hover:text-white" onClick={() => toggleSort('score')}>
                 Score <SortIcon col="score" sortKey={sortKey} sortDir={sortDir} />
               </th>
@@ -130,7 +143,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
           <tbody>
             {paginated.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-gray-400">
+                <td colSpan={8} className="px-5 py-10 text-center text-gray-400">
                   {search || rankFilter !== 'All' ? 'No leads match your filters.' : 'No leads found.'}
                 </td>
               </tr>
@@ -144,6 +157,7 @@ export default function LeadsTable({ leads }: { leads: Lead[] }) {
                   <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>
                   <td className="px-5 py-3 text-gray-300">{lead.city ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-300">{lead.owner_name ?? '—'}</td>
+                  <td className="px-5 py-3 text-right font-mono text-gray-300">{formatCurrency(lead.assessed_value)}</td>
                   <td className="px-5 py-3 text-right font-mono text-white">{lead.score}</td>
                   <td className="px-5 py-3 text-center"><RankBadge rank={lead.rank} /></td>
                   <td className="px-5 py-3 text-right text-gray-300">{lead.signal_count}</td>

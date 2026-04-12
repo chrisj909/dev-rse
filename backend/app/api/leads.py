@@ -79,6 +79,7 @@ def _build_lead(prop: Property, signal: Signal, score: Score) -> LeadResponse:
         state=_coerce_state(getattr(prop, "state", None)),
         zip=_coerce_text(getattr(prop, "zip", None)),
         owner_name=_coerce_text(getattr(prop, "owner_name", None)),
+        assessed_value=_coerce_float(getattr(prop, "assessed_value", None)),
         score=_coerce_int(getattr(score, "score", None), default=0),
         rank=_coerce_rank(getattr(score, "rank", None)),
         signals=active_signals,

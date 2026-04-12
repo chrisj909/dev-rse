@@ -39,6 +39,7 @@ class LeadResponse(BaseModel):
     state: str = "AL"
     zip: Optional[str] = None
     owner_name: Optional[str] = None
+    assessed_value: Optional[float] = None
     score: int
     rank: str                    # "A" | "B" | "C"
     signals: list[str]           # active signal names only

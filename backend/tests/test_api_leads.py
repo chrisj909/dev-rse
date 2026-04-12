@@ -220,6 +220,14 @@ class TestGetTopLeadsWithData:
         lead = test_client.get("/api/leads/top").json()["leads"][0]
         assert lead["owner_name"] == "JANE SMITH"
 
+    def test_lead_has_assessed_value(self, test_client, mock_session):
+        prop = make_mock_property(assessed_value=215000.0)
+        sig = make_mock_signal()
+        sc = make_mock_score()
+        _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
+        lead = test_client.get("/api/leads/top").json()["leads"][0]
+        assert lead["assessed_value"] == 215000.0
+
     def test_lead_has_score(self, test_client, mock_session):
         prop = make_mock_property()
         sig = make_mock_signal()
@@ -351,6 +359,14 @@ class TestGetTopLeadsWithData:
         _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
         lead = test_client.get("/api/leads/top").json()["leads"][0]
         assert lead["zip"] is None
+
+    def test_assessed_value_null(self, test_client, mock_session):
+        prop = make_mock_property(assessed_value=None)
+        sig = make_mock_signal()
+        sc = make_mock_score()
+        _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
+        lead = test_client.get("/api/leads/top").json()["leads"][0]
+        assert lead["assessed_value"] is None
 
 
 class TestGetTopLeadsSignals:
