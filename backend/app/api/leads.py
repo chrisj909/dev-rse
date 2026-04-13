@@ -323,6 +323,8 @@ def _build_sort_expression(sort_by: str, sort_dir: str) -> tuple:
     sort_field = _SORT_FIELDS.get(sort_by, Score.score)
     direction = sort_dir.lower()
     primary = sort_field.asc() if direction == "asc" else sort_field.desc()
+    if sort_by in {"assessed_value", "address", "city", "county", "last_updated"}:
+        primary = primary.nulls_last()
     secondary = Score.score.desc()
     return primary, secondary
 
@@ -385,6 +387,8 @@ def _build_property_detail_response(row: tuple[Property, Signal, Score]) -> Prop
         signals=SignalDetail(
             absentee_owner=bool(getattr(signal, "absentee_owner", False)),
             long_term_owner=bool(getattr(signal, "long_term_owner", False)),
+            out_of_state_owner=bool(getattr(signal, "out_of_state_owner", False)),
+            corporate_owner=bool(getattr(signal, "corporate_owner", False)),
             tax_delinquent=bool(getattr(signal, "tax_delinquent", False)),
             pre_foreclosure=bool(getattr(signal, "pre_foreclosure", False)),
             probate=bool(getattr(signal, "probate", False)),
@@ -395,7 +399,7 @@ def _build_property_detail_response(row: tuple[Property, Signal, Score]) -> Prop
             score=_coerce_int(getattr(score, "score", None), default=0),
             rank=_coerce_rank(getattr(score, "rank", None)),
             reason=_coerce_reason_list(getattr(score, "reason", None)),
-            scoring_version=_coerce_text(getattr(score, "scoring_version", None)) or "v2",
+            scoring_version=_coerce_text(getattr(score, "scoring_version", None)) or "v3",
             last_updated=_coerce_datetime(getattr(score, "last_updated", None)),
         ),
         created_at=_coerce_datetime(getattr(prop, "created_at", None)),

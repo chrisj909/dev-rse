@@ -901,6 +901,16 @@ class TestGetPropertyDetailSignals:
         data = test_client.get(f"/api/property/{prop.id}").json()
         assert data["signals"]["long_term_owner"] is True
 
+    def test_signals_has_out_of_state_owner(self, test_client, mock_session):
+        prop = self._setup_with_signal(mock_session, out_of_state_owner=True)
+        data = test_client.get(f"/api/property/{prop.id}").json()
+        assert data["signals"]["out_of_state_owner"] is True
+
+    def test_signals_has_corporate_owner(self, test_client, mock_session):
+        prop = self._setup_with_signal(mock_session, corporate_owner=True)
+        data = test_client.get(f"/api/property/{prop.id}").json()
+        assert data["signals"]["corporate_owner"] is True
+
     def test_signals_has_tax_delinquent(self, test_client, mock_session):
         prop = self._setup_with_signal(mock_session, tax_delinquent=True)
         data = test_client.get(f"/api/property/{prop.id}").json()

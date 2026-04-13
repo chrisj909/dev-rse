@@ -20,6 +20,7 @@ interface LeadDetail {
     score: number;
     rank: string;
     reason: string[];
+    scoring_version?: string;
     last_updated: string;
   };
 }
@@ -69,6 +70,8 @@ export default async function PropertyPage({
   if (!lead) notFound();
 
   const activeSignals = Object.entries(lead.signals).filter(([, isActive]) => Boolean(isActive));
+  const scoreDrivers = lead.score.reason.filter(reason => reason !== 'distress_combo');
+  const hasDistressBonus = lead.score.reason.includes('distress_combo');
 
   return (
     <div className="p-6 max-w-2xl space-y-6">
@@ -107,6 +110,10 @@ export default async function PropertyPage({
           <span className="text-white font-medium">{activeSignals.length}</span>
         </div>
         <div className="flex justify-between px-5 py-4">
+          <span className="text-gray-400">Scoring Version</span>
+          <span className="text-white font-medium">{lead.score.scoring_version ?? 'v3'}</span>
+        </div>
+        <div className="flex justify-between px-5 py-4">
           <span className="text-gray-400">Mailing Address</span>
           <span className="text-white font-medium">{lead.mailing_address ?? '—'}</span>
         </div>
@@ -133,6 +140,26 @@ export default async function PropertyPage({
                 {signalName.replaceAll('_', ' ')}
               </span>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-5 space-y-3">
+        <h2 className="text-white font-semibold text-sm uppercase tracking-wide">Score Drivers</h2>
+        {scoreDrivers.length === 0 && !hasDistressBonus ? (
+          <p className="text-gray-400 text-sm">No active scoring drivers on this property.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {scoreDrivers.map(reason => (
+              <span key={reason} className="rounded-full bg-emerald-600/15 px-3 py-1 text-sm text-emerald-200">
+                {reason.replaceAll('_', ' ')}
+              </span>
+            ))}
+            {hasDistressBonus ? (
+              <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm text-amber-200">
+                distress combo bonus
+              </span>
+            ) : null}
           </div>
         )}
       </div>
