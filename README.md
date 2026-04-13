@@ -137,6 +137,7 @@ Note: property detail navigation currently uses the query-parameter route above 
 ### 5.3 Scheduled Flow
 
 `GET /api/cron/run-signals` is a protected endpoint that re-runs signal and scoring logic over existing properties.
+The deployed Vercel cron calls this route daily using `CRON_SECRET` bearer authentication.
 
 ## 6. Core Data Model
 
@@ -216,6 +217,12 @@ Current practical implication:
 | `GET` | `/api/health` | Liveness check |
 | `POST` | `/api/ingest/run` | Run live ingest |
 | `GET` | `/api/cron/run-signals` | Protected full signal and scoring batch |
+
+Admin auth accepted by ingest and cron routes:
+
+- `Authorization: Bearer <CRON_SECRET>`
+- `X-Cron-Secret: <CRON_SECRET>`
+- `?cron_secret=<CRON_SECRET>` for manual debugging
 
 ### 8.2 Lead Read Endpoints
 

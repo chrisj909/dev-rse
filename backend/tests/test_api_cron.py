@@ -1,0 +1,59 @@
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock
+
+
+class TestRunSignalsCronAuth:
+    def test_requires_authentication(self, test_client, monkeypatch):
+        monkeypatch.setattr("app.api.cron.settings.cron_secret", "secret123")
+
+        resp = test_client.get("/api/cron/run-signals")
+
+        assert resp.status_code == 401
+
+    def test_accepts_bearer_authentication(self, test_client, mock_session, monkeypatch):
+        monkeypatch.setattr("app.api.cron.settings.cron_secret", "secret123")
+
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        mock_session.execute = AsyncMock(return_value=result)
+        mock_session.commit = AsyncMock()
+
+        monkeypatch.setattr(
+            "app.api.cron.SignalEngine.process_batch",
+            AsyncMock(return_value={"processed": 0}),
+        )
+        monkeypatch.setattr(
+            "app.api.cron.ScoringEngine.score_batch",
+            AsyncMock(return_value={"processed": 0}),
+        )
+
+        resp = test_client.get(
+            "/api/cron/run-signals",
+            headers={"Authorization": "Bearer secret123"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+    def test_accepts_query_secret(self, test_client, mock_session, monkeypatch):
+        monkeypatch.setattr("app.api.cron.settings.cron_secret", "secret123")
+
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []
+        mock_session.execute = AsyncMock(return_value=result)
+        mock_session.commit = AsyncMock()
+
+        monkeypatch.setattr(
+            "app.api.cron.SignalEngine.process_batch",
+            AsyncMock(return_value={"processed": 0}),
+        )
+        monkeypatch.setattr(
+            "app.api.cron.ScoringEngine.score_batch",
+            AsyncMock(return_value={"processed": 0}),
+        )
+
+        resp = test_client.get("/api/cron/run-signals?cron_secret=secret123")
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"

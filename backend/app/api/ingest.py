@@ -1,20 +1,23 @@
 """
 POST /api/ingest/run â pull data from all scrapers, upsert into properties table,
 run signal + scoring engines on new/updated records.
-Secured with X-Cron-Secret header (reuses CRON_SECRET env var).
+Secured with CRON_SECRET via bearer auth, X-Cron-Secret, or query param.
 """
 import time
+
 from fastapi import APIRouter, Header, HTTPException, Depends, Query
 from sqlalchemy import select, tuple_
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.admin_auth import is_authorized_admin_request
+from app.core.config import settings
 from app.db.session import get_session
 from app.models.property import Property
 from app.scoring.engine import ScoringEngine
 from app.scrapers import run_all_scrapers, run_delinquent_only
-from app.services.tax_delinquency import TaxDelinquencyService
 from app.signals.engine import SignalEngine
-from app.core.config import settings
+from app.services.tax_delinquency import TaxDelinquencyService
 
 router = APIRouter()
 
@@ -22,6 +25,8 @@ router = APIRouter()
 @router.post("/ingest/run")
 async def run_ingest(
     x_cron_secret: str = Header(None),
+    authorization: str = Header(None),
+    cron_secret: str = Query(None),
     county: str = Query("all"),
     delinquent_only: bool = Query(False),
     dry_run: bool = Query(False),
@@ -29,7 +34,12 @@ async def run_ingest(
     session: AsyncSession = Depends(get_session),
 ):
     """Run scrapers and ingest data. Secured with CRON_SECRET."""
-    if settings.cron_secret and x_cron_secret != settings.cron_secret:
+    if settings.cron_secret and not is_authorized_admin_request(
+        settings.cron_secret,
+        header_secret=x_cron_secret,
+        authorization=authorization,
+        query_secret=cron_secret,
+    ):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     start = time.time()

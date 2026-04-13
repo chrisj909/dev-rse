@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-from app.db.session import get_db
+from app.db.session import get_db, get_session
 
 
 # ── Session / client fixtures ─────────────────────────────────────────────────
@@ -35,6 +35,7 @@ def test_client(mock_session: AsyncMock):
         yield mock_session
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_session] = override_get_db
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()

@@ -1,12 +1,15 @@
 import time
-from fastapi import APIRouter, Header, HTTPException, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.admin_auth import is_authorized_admin_request
 from app.db.session import get_session
-from app.signals.engine import SignalEngine
+from app.core.config import settings
 from app.models.property import Property
 from app.scoring.engine import ScoringEngine
-from app.core.config import settings
+from app.signals.engine import SignalEngine
 
 router = APIRouter()
 
@@ -14,10 +17,17 @@ router = APIRouter()
 @router.get("/run-signals")
 async def run_signals_cron(
     x_cron_secret: str = Header(None),
+    authorization: str = Header(None),
+    cron_secret: str = Query(None),
     session: AsyncSession = Depends(get_session),
 ):
     """Nightly cron endpoint — runs signal detection and scoring on all properties."""
-    if not settings.cron_secret or x_cron_secret != settings.cron_secret:
+    if not is_authorized_admin_request(
+        settings.cron_secret,
+        header_secret=x_cron_secret,
+        authorization=authorization,
+        query_secret=cron_secret,
+    ):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     start = time.time()
