@@ -22,7 +22,7 @@ interface LeadsResponse {
   total: number;
 }
 
-const LEADS_FETCH_LIMIT = 1000;
+const LEADS_FETCH_LIMIT = 250;
 
 function RankBadge({ rank }: { rank: string }) {
   const colors: Record<string, string> = {

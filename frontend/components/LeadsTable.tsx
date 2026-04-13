@@ -1,5 +1,5 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { type FormEvent, useState, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 interface Lead {
@@ -196,9 +196,17 @@ export default function LeadsTable({
     });
   }
 
+  function handleFilterSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    applyFilters();
+  }
+
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-gray-700 bg-gray-800/95 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.28)]">
+      <form
+        onSubmit={handleFilterSubmit}
+        className="rounded-2xl border border-gray-700 bg-gray-800/95 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.28)]"
+      >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-300">Detailed Search</p>
@@ -213,13 +221,14 @@ export default function LeadsTable({
               {activeFilterCount} active filters
             </div>
             <button
-              onClick={applyFilters}
+              type="submit"
               disabled={isPending}
               className="rounded-full bg-blue-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-60"
             >
               {isPending ? 'Updating...' : 'Apply'}
             </button>
             <button
+              type="button"
               onClick={clearFilters}
               className="rounded-full border border-gray-600 px-3 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-gray-500 hover:bg-gray-700"
             >
@@ -338,6 +347,7 @@ export default function LeadsTable({
               {['All', 'A', 'B', 'C'].map(r => (
                 <button
                   key={r}
+                  type="button"
                   onClick={() => setRankFilter(r)}
                   className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
                     rankFilter === r
@@ -351,7 +361,7 @@ export default function LeadsTable({
             </div>
           </div>
         </div>
-      </div>
+      </form>
 
       {/* Table */}
       <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
