@@ -1,7 +1,7 @@
-"""
-RSE Core Configuration
+"""RSE Core Configuration.
 Loads settings from environment / .env file via pydantic-settings.
 """
+import os
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -13,6 +13,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _ROOT_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 
+def _default_app_env() -> str:
+    vercel_env = os.getenv("VERCEL_ENV", "").strip().lower()
+    if vercel_env in {"production", "preview"}:
+        return "production"
+    return "development"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(_ROOT_ENV_FILE),
@@ -21,7 +28,7 @@ class Settings(BaseSettings):
     )
 
     # Application
-    app_env: str = "development"
+    app_env: str = _default_app_env()
     app_host: str = "0.0.0.0"
     app_port: int = 8000
 
@@ -31,7 +38,19 @@ class Settings(BaseSettings):
     # Must use an asyncpg-compatible scheme: postgresql+asyncpg://...
     # For sync access (Alembic migrations), a sync URL is derived below.
     database_url: str = "postgresql+asyncpg://rse_user:rse_password@db:5432/rse_db"
-    database_sync_url: str = "postgresql://rse_user:rse_password@db:5432/rse_db"
+    database_sync_url: str = ""
+
+    def _is_local_database_url(self, url: str) -> bool:
+        parsed = urlsplit(url)
+        hostname = (parsed.hostname or "").lower()
+        return hostname in {"", "localhost", "127.0.0.1", "db"}
+
+    def _validate_database_url(self, url: str, setting_name: str) -> None:
+        if self.app_env == "production" and self._is_local_database_url(url):
+            raise ValueError(
+                f"{setting_name} resolves to a local database URL while APP_ENV is production. "
+                "Set your Vercel/Supabase database environment variables before startup."
+            )
 
     def uses_pgbouncer(self) -> bool:
         """Detect pooled Postgres URLs that require PgBouncer-safe asyncpg settings."""
@@ -64,6 +83,7 @@ class Settings(BaseSettings):
             query = dict(query_pairs)
             query.setdefault("prepared_statement_cache_size", "0")
             url = urlunsplit(parsed._replace(query=urlencode(query)))
+        self._validate_database_url(url, "DATABASE_URL")
         return url
 
     def get_async_connect_args(self) -> dict[str, Any]:
@@ -90,10 +110,11 @@ class Settings(BaseSettings):
         url = self.database_sync_url or self.database_url
         url = url.replace("postgresql+asyncpg://", "postgresql://")
         url = url.replace("postgres://", "postgresql://")
+        self._validate_database_url(url, "DATABASE_SYNC_URL")
         return url
 
     # Scoring
-    scoring_version: str = "v1"
+    scoring_version: str = "v2"
     score_threshold: float = 25
 
     # Webhooks (Sprint 6)

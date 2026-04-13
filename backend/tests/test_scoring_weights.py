@@ -2,10 +2,10 @@
 Tests for app/scoring/weights.py — Sprint 3, Task 9.
 
 Coverage:
-  - Zero score (no signals active)
-  - Every individual signal: correct weight, correct rank, correct reason tag
-  - All signal combinations (exhaustive for 2-signal combos, key 3+ combos)
-  - Rank boundary conditions: exactly 14 (C), exactly 15 (B), exactly 24 (B), exactly 25 (A)
+    - Zero score (no signals active)
+    - Every individual signal: correct weight, correct rank, correct reason tag
+    - All signal combinations (exhaustive for 2-signal combos, key 3+ combos)
+    - Rank boundary conditions: exactly 9 (C), exactly 10 (B), exactly 24 (B), exactly 25 (A)
   - Distress combo bonus: triggered at 2 distress signals, not at 1
   - Distress combo with all 4 distress signals
   - Non-distress signals (absentee_owner, long_term_owner) do NOT trigger combo
@@ -42,8 +42,8 @@ class TestConstants:
         assert isinstance(SCORING_VERSION, str)
         assert len(SCORING_VERSION) > 0
 
-    def test_scoring_version_is_v1(self):
-        assert SCORING_VERSION == "v1"
+    def test_scoring_version_is_v2(self):
+        assert SCORING_VERSION == "v2"
 
     def test_weights_contains_all_signals(self):
         expected = {
@@ -76,7 +76,7 @@ class TestConstants:
 
     def test_rank_thresholds(self):
         assert RANK_A_MIN == 25
-        assert RANK_B_MIN == 15
+        assert RANK_B_MIN == 10
 
 
 # ── Zero / empty cases ────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ class TestIndividualSignals:
     def test_long_term_owner_only(self):
         score, rank, reasons = calculate_score({"long_term_owner": True})
         assert score == 10
-        assert rank == "C"
+        assert rank == "B"
         assert reasons == ["long_term_owner"]
 
     def test_tax_delinquent_only(self):
@@ -143,7 +143,7 @@ class TestIndividualSignals:
     def test_probate_only(self):
         score, rank, reasons = calculate_score({"probate": True})
         assert score == 20
-        assert rank == "B"   # 20 is in the B range (15–24); A requires ≥25
+        assert rank == "B"   # 20 is in the B range (10–24); A requires ≥25
         assert reasons == ["probate"]
 
     def test_code_violation_only(self):
@@ -311,23 +311,20 @@ class TestMultiSignalCombinations:
 # ── Rank boundary tests ───────────────────────────────────────────────────────
 
 class TestRankBoundaries:
-    """Verify exact cutoffs: A=25+, B=15-24, C=<15."""
+    """Verify exact cutoffs: A=25+, B=10-24, C=<10."""
 
     def test_score_0_is_rank_c(self):
         score, rank, _ = calculate_score({})
         assert rank == "C"
         assert score == 0
 
-    def test_score_14_is_rank_c(self):
-        """long_term_owner(10) only = 10, still C."""
+    def test_score_9_is_rank_c(self):
+        assert assign_rank(9) == "C"
+
+    def test_score_exactly_10_is_rank_b(self):
+        """long_term_owner = 10 → exactly B boundary."""
         score, rank, _ = calculate_score({"long_term_owner": True})
         assert score == 10
-        assert rank == "C"
-
-    def test_score_exactly_15_is_rank_b(self):
-        """absentee_owner = 15 → exactly B boundary."""
-        score, rank, _ = calculate_score({"absentee_owner": True})
-        assert score == 15
         assert rank == "B"
 
     def test_score_exactly_24_is_rank_b(self):
@@ -336,7 +333,7 @@ class TestRankBoundaries:
         For score=24 use a fabricated flag set with no direct combination.
         Instead verify via assign_rank directly."""
         assert assign_rank(24) == "B"
-        assert assign_rank(15) == "B"
+        assert assign_rank(10) == "B"
 
     def test_score_exactly_25_is_rank_a(self):
         """absentee_owner(15) + long_term_owner(10) = 25 → exactly A boundary."""
@@ -462,8 +459,9 @@ class TestAssignRank:
     @pytest.mark.parametrize("score,expected", [
         (0, "C"),
         (1, "C"),
-        (14, "C"),
-        (15, "B"),
+        (9, "C"),
+        (10, "B"),
+        (14, "B"),
         (20, "B"),
         (24, "B"),
         (25, "A"),

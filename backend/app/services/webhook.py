@@ -43,6 +43,11 @@ _MAX_RETRIES = 3
 _BACKOFF_BASE = 1.0   # seconds; delay = _BACKOFF_BASE * 2^(attempt)
 
 
+def _lead_ref(lead: CRMLeadExport) -> str:
+    """Return a county-aware lead identifier for logs and operator triage."""
+    return f"{lead.property.county}:{lead.property.parcel_id}"
+
+
 class WebhookService:
     """
     Sends CRM lead payloads to an external webhook URL.
@@ -115,7 +120,7 @@ class WebhookService:
             if response.is_success:
                 logger.info(
                     "WebhookService: delivered lead %s (score=%d) — HTTP %d",
-                    lead.property.parcel_id,
+                    _lead_ref(lead),
                     lead.score.value,
                     response.status_code,
                 )
@@ -125,7 +130,7 @@ class WebhookService:
             if 400 <= response.status_code < 500:
                 logger.error(
                     "WebhookService: permanent failure for lead %s — HTTP %d: %s",
-                    lead.property.parcel_id,
+                    _lead_ref(lead),
                     response.status_code,
                     response.text[:200],
                 )
@@ -137,7 +142,7 @@ class WebhookService:
                 attempt,
                 _MAX_RETRIES,
                 response.status_code,
-                lead.property.parcel_id,
+                _lead_ref(lead),
             )
             if attempt < _MAX_RETRIES:
                 self._backoff(attempt)
@@ -145,7 +150,7 @@ class WebhookService:
         logger.error(
             "WebhookService: all %d attempts exhausted for lead %s.",
             _MAX_RETRIES,
-            lead.property.parcel_id,
+            _lead_ref(lead),
         )
         return False
 
@@ -171,7 +176,7 @@ class WebhookService:
                 skipped += 1
                 logger.debug(
                     "WebhookService: skipping lead %s (score=%d < threshold=%d)",
-                    lead.property.parcel_id,
+                    _lead_ref(lead),
                     lead.score.value,
                     self.threshold,
                 )

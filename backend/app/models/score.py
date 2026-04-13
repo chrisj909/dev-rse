@@ -31,7 +31,7 @@ class Score(Base):
     score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     rank: Mapped[str] = mapped_column(String(1), nullable=False, default="C")  # A | B | C
     reason: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
-    scoring_version: Mapped[str] = mapped_column(String(16), nullable=False, default="v1")
+    scoring_version: Mapped[str] = mapped_column(String(16), nullable=False, default="v2")
 
     last_updated: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

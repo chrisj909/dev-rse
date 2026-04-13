@@ -240,8 +240,8 @@ def main() -> None:
     log.info("  Processed        : %d", summary["processed"])
     log.info("  Errors           : %d", summary["errors"])
     log.info("  Rank A (score≥25): %d", summary["rank_a"])
-    log.info("  Rank B (15–24)   : %d", summary["rank_b"])
-    log.info("  Rank C (<15)     : %d", summary["rank_c"])
+    log.info("  Rank B (10–24)   : %d", summary["rank_b"])
+    log.info("  Rank C (<10)     : %d", summary["rank_c"])
     log.info("=" * 60)
 
     # Exit 1 if any errors occurred (useful for cron monitoring / alerting)

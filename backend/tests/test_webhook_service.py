@@ -75,6 +75,7 @@ def make_lead(score: int = 35, rank: str = "A", parcel_id: str = "SC-0001") -> C
     return CRMLeadExport(
         property=PropertyExport(
             property_id=str(uuid.uuid4()),
+            county="shelby",
             parcel_id=parcel_id,
             address="123 MAIN ST",
             city="HOOVER",
@@ -83,7 +84,7 @@ def make_lead(score: int = 35, rank: str = "A", parcel_id: str = "SC-0001") -> C
             updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
         ),
         signals=SignalsExport(absentee_owner=True, long_term_owner=True),
-        score=ScoreExport(value=score, rank=rank, version="v1"),
+        score=ScoreExport(value=score, rank=rank, version="v2"),
         tags=["absentee_owner", "long_term_owner"],
         exported_at=datetime(2026, 4, 3, 12, 0, tzinfo=timezone.utc),
     )
@@ -252,6 +253,7 @@ class TestWebhookServiceSend:
         assert "property" in payload
         assert "signals" in payload
         assert "score" in payload
+        assert payload["property"]["county"] == "shelby"
         assert payload["score"]["value"] == 42
 
     @patch("app.services.webhook.time.sleep")

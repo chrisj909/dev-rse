@@ -3,6 +3,7 @@ import { useState, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 interface Lead {
+  county: string;
   parcel_id: string;
   address: string | null;
   city: string | null;
@@ -16,6 +17,7 @@ interface Lead {
 
 interface FilterState {
   search?: string;
+  county?: string;
   city?: string;
   owner?: string;
   parcel_id?: string;
@@ -30,8 +32,13 @@ interface FilterState {
   page_size?: string;
 }
 
-type SortKey = 'score' | 'address' | 'city' | 'assessed_value' | 'last_updated';
+type SortKey = 'score' | 'address' | 'city' | 'county' | 'assessed_value' | 'last_updated';
 type SortDir = 'asc' | 'desc';
+
+function formatCounty(county: string) {
+  if (!county) return 'County unavailable';
+  return `${county.charAt(0).toUpperCase()}${county.slice(1)} County`;
+}
 
 function RankBadge({ rank }: { rank: string }) {
   const colors: Record<string, string> = {
@@ -69,6 +76,7 @@ export default function LeadsTable({
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(initialFilters.search ?? '');
+  const [countyFilter, setCountyFilter] = useState(initialFilters.county ?? 'All');
   const [cityFilter, setCityFilter] = useState(initialFilters.city ?? '');
   const [ownerFilter, setOwnerFilter] = useState(initialFilters.owner ?? '');
   const [parcelFilter, setParcelFilter] = useState(initialFilters.parcel_id ?? '');
@@ -85,6 +93,7 @@ export default function LeadsTable({
 
   const activeFilterCount = [
     search,
+    countyFilter !== 'All' ? countyFilter : '',
     cityFilter,
     ownerFilter,
     parcelFilter,
@@ -139,6 +148,7 @@ export default function LeadsTable({
 
   function clearFilters() {
     setSearch('');
+    setCountyFilter('All');
     setCityFilter('');
     setOwnerFilter('');
     setParcelFilter('');
@@ -151,6 +161,7 @@ export default function LeadsTable({
     setSortDir('desc');
     navigate({
       search: null,
+      county: null,
       city: null,
       owner: null,
       parcel_id: null,
@@ -169,6 +180,7 @@ export default function LeadsTable({
   function applyFilters() {
     navigate({
       search,
+      county: countyFilter,
       city: cityFilter,
       owner: ownerFilter,
       parcel_id: parcelFilter,
@@ -217,6 +229,19 @@ export default function LeadsTable({
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="block">
+            <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-400">County</span>
+            <select
+              value={countyFilter}
+              onChange={e => setCountyFilter(e.target.value)}
+              className="w-full rounded-xl border border-gray-600 bg-gray-900/80 px-4 py-2.5 text-sm text-white focus:border-blue-500 focus:outline-none"
+            >
+              <option value="All">All counties</option>
+              <option value="shelby">Shelby County</option>
+              <option value="jefferson">Jefferson County</option>
+            </select>
+          </label>
+
           <label className="block">
             <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-400">Global Search</span>
             <input
@@ -339,6 +364,9 @@ export default function LeadsTable({
               <th className="px-5 py-3 text-left cursor-pointer hover:text-white" onClick={() => toggleSort('city')}>
                 City <SortIcon col="city" sortKey={sortKey} sortDir={sortDir} />
               </th>
+              <th className="px-5 py-3 text-left cursor-pointer hover:text-white" onClick={() => toggleSort('county')}>
+                County <SortIcon col="county" sortKey={sortKey} sortDir={sortDir} />
+              </th>
               <th className="px-5 py-3 text-left">Owner</th>
               <th className="px-5 py-3 text-right cursor-pointer hover:text-white" onClick={() => toggleSort('assessed_value')}>
                 Property Value <SortIcon col="assessed_value" sortKey={sortKey} sortDir={sortDir} />
@@ -356,19 +384,20 @@ export default function LeadsTable({
           <tbody>
             {leads.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-5 py-10 text-center text-gray-400">
+                <td colSpan={9} className="px-5 py-10 text-center text-gray-400">
                   {activeFilterCount > 0 ? 'No leads match your filters.' : 'No leads found.'}
                 </td>
               </tr>
             ) : (
               leads.map(lead => (
                 <tr
-                  key={lead.parcel_id}
-                  onClick={() => router.push(`/property?parcel_id=${encodeURIComponent(lead.parcel_id)}`)}
+                  key={`${lead.county}:${lead.parcel_id}`}
+                  onClick={() => router.push(`/property?parcel_id=${encodeURIComponent(lead.parcel_id)}&county=${encodeURIComponent(lead.county)}`)}
                   className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
                   <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>
                   <td className="px-5 py-3 text-gray-300">{lead.city ?? '—'}</td>
+                  <td className="px-5 py-3 text-gray-300">{formatCounty(lead.county)}</td>
                   <td className="px-5 py-3 text-gray-300">{lead.owner_name ?? '—'}</td>
                   <td className="px-5 py-3 text-right font-mono text-gray-300">{formatCurrency(lead.assessed_value)}</td>
                   <td className="px-5 py-3 text-right font-mono text-white">{lead.score}</td>

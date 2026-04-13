@@ -27,6 +27,7 @@ class PropertyExport(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     property_id: str
+    county: str
     parcel_id: str
     address: Optional[str] = None
     raw_address: Optional[str] = None
@@ -75,7 +76,7 @@ class ScoreExport(BaseModel):
 
     value: int
     rank: str       # "A" | "B" | "C"
-    version: str    # e.g. "v1"
+    version: str    # e.g. "v2"
 
 
 # ── Full CRM lead record ──────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ class CRMLeadExport(BaseModel):
       {
         "property": { ...all property fields },
         "signals":  { ...all signal booleans },
-        "score":    { "value": 35, "rank": "A", "version": "v1" },
+        "score":    { "value": 35, "rank": "A", "version": "v2" },
         "tags":     ["absentee_owner", "long_term_owner"],
         "exported_at": "2026-04-03T..."
       }

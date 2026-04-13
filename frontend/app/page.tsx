@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { getClientApiBaseUrl } from '../lib/api';
 
 interface Lead {
+  county: string;
   parcel_id: string;
   address: string | null;
   city: string | null;
@@ -80,7 +81,7 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Real Estate Signal Engine</h1>
-          <p className="text-slate-500 text-sm mt-1">Shelby County, AL — Lead Scoring Dashboard</p>
+          <p className="text-slate-500 text-sm mt-1">Shelby + Jefferson Counties, AL — Lead Scoring Dashboard</p>
         </div>
         <div className="text-right">
           {lastRefresh && (
@@ -146,8 +147,8 @@ export default function Dashboard() {
             <tbody>
               {top5.map(lead => (
                 <tr
-                  key={lead.parcel_id}
-                  onClick={() => window.location.href = `/property?parcel_id=${encodeURIComponent(lead.parcel_id)}`}
+                  key={`${lead.county}:${lead.parcel_id}`}
+                  onClick={() => window.location.href = `/property?parcel_id=${encodeURIComponent(lead.parcel_id)}&county=${encodeURIComponent(lead.county)}`}
                   className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
                   <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>

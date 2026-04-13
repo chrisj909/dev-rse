@@ -5,7 +5,7 @@ Secured with X-Cron-Secret header (reuses CRON_SECRET env var).
 """
 import time
 from fastapi import APIRouter, Header, HTTPException, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.db.session import get_session
@@ -22,6 +22,7 @@ router = APIRouter()
 @router.post("/ingest/run")
 async def run_ingest(
     x_cron_secret: str = Header(None),
+    county: str = Query("all"),
     delinquent_only: bool = Query(False),
     dry_run: bool = Query(False),
     limit: int = Query(None),
@@ -35,9 +36,9 @@ async def run_ingest(
 
     try:
         if delinquent_only:
-            records = await run_delinquent_only()
+            records = await run_delinquent_only(county=county)
         else:
-            records = await run_all_scrapers(limit=limit)
+            records = await run_all_scrapers(limit=limit, county=county)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scraper error: {str(e)}")
 
@@ -52,14 +53,16 @@ async def run_ingest(
         }
 
     upserted = 0
-    parcel_ids: list[str] = []
+    property_keys: list[tuple[str, str]] = []
     for rec in records:
         parcel_id = rec.get("parcel_id")
+        property_county = str(rec.get("county") or "shelby").lower()
         if not parcel_id:
             continue
 
         mailing_address = rec.get("mailing_address") or rec.get("owner_mailing_address")
         stmt = pg_insert(Property).values(
+            county=property_county,
             parcel_id=parcel_id,
             address=rec.get("address"),
             raw_address=rec.get("raw_address") or rec.get("address"),
@@ -72,8 +75,9 @@ async def run_ingest(
             last_sale_date=rec.get("last_sale_date"),
             assessed_value=rec.get("assessed_value"),
         ).on_conflict_do_update(
-            index_elements=["parcel_id"],
+            index_elements=["county", "parcel_id"],
             set_={
+                "county": property_county,
                 "address": rec.get("address"),
                 "raw_address": rec.get("raw_address") or rec.get("address"),
                 "city": rec.get("city"),
@@ -87,7 +91,7 @@ async def run_ingest(
             },
         )
         await session.execute(stmt)
-        parcel_ids.append(parcel_id)
+        property_keys.append((property_county, parcel_id))
         upserted += 1
 
     await session.commit()
@@ -104,9 +108,10 @@ async def run_ingest(
     score_result = {"processed": 0}
     tax_result = {"processed": 0, "updated": 0, "not_found": 0}
     try:
+        unique_keys = list(dict.fromkeys(property_keys))
         result = await session.execute(
             select(Property).where(
-                Property.parcel_id.in_(list(dict.fromkeys(parcel_ids)))
+                tuple_(Property.county, Property.parcel_id).in_(unique_keys)
             )
         )
         properties = result.scalars().all()
@@ -127,6 +132,7 @@ async def run_ingest(
 
     return {
         "status": "ok",
+        "county": county.lower(),
         "fetched": fetched,
         "upserted": upserted,
         "signals": signal_result,

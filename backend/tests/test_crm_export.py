@@ -56,7 +56,7 @@ from tests.conftest import make_mock_property, make_mock_score, make_mock_signal
 # ── Expected keys ─────────────────────────────────────────────────────────────
 
 _PROPERTY_KEYS = {
-    "property_id", "parcel_id", "address", "raw_address", "city", "state", "zip",
+    "property_id", "county", "parcel_id", "address", "raw_address", "city", "state", "zip",
     "owner_name", "mailing_address", "last_sale_date", "assessed_value",
     "created_at", "updated_at",
 }
@@ -122,6 +122,12 @@ class TestExportLeads:
         _mock_execute_pair(mock_session, rows=[_mock_row()], total=1)
         lead = test_client.get("/api/leads/export").json()["leads"][0]
         assert set(lead["property"].keys()) == _PROPERTY_KEYS
+
+    def test_property_county_value_present(self, test_client: TestClient, mock_session: AsyncMock):
+        prop = make_mock_property(county="jefferson")
+        _mock_execute_pair(mock_session, rows=[_mock_row(prop=prop)], total=1)
+        lead = test_client.get("/api/leads/export").json()["leads"][0]
+        assert lead["property"]["county"] == "jefferson"
 
     def test_signals_sub_object_keys(self, test_client: TestClient, mock_session: AsyncMock):
         _mock_execute_pair(mock_session, rows=[_mock_row()], total=1)

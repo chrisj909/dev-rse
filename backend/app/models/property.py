@@ -1,7 +1,7 @@
 """
-RSE ORM Model — properties table
+RSE ORM Model — properties table.
 Primary record for each real estate parcel.
-parcel_id is the canonical dedupe key (UNIQUE).
+The canonical dedupe key is (county, parcel_id).
 """
 import uuid
 from datetime import datetime
@@ -19,8 +19,9 @@ class Property(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    # Canonical dedupe key — sourced from county records
-    parcel_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    # Canonical dedupe key — sourced from county records.
+    county: Mapped[str] = mapped_column(String(32), nullable=False, default="shelby", index=True)
+    parcel_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
 
     # Address fields — normalized for matching, raw preserved for display
     address: Mapped[str | None] = mapped_column(String(255))          # normalized
@@ -58,4 +59,4 @@ class Property(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Property parcel_id={self.parcel_id!r} address={self.address!r}>"
+        return f"<Property county={self.county!r} parcel_id={self.parcel_id!r} address={self.address!r}>"

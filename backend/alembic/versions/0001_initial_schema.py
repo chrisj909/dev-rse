@@ -99,7 +99,7 @@ def upgrade() -> None:
             nullable=False,
             server_default="{}",
         ),
-        sa.Column("scoring_version", sa.String(16), nullable=False, server_default="v1"),
+        sa.Column("scoring_version", sa.String(16), nullable=False, server_default="v2"),
         sa.Column(
             "last_updated",
             sa.DateTime(timezone=True),

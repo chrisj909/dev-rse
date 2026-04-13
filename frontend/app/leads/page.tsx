@@ -5,6 +5,7 @@ import { getServerApiBaseUrl } from '../../lib/server-api';
 export const dynamic = 'force-dynamic';
 
 interface Lead {
+  county: string;
   parcel_id: string;
   address: string | null;
   city: string | null;
@@ -30,6 +31,7 @@ type LeadsPageSearchParams = {
   page?: string;
   page_size?: string;
   search?: string;
+  county?: string;
   city?: string;
   owner?: string;
   parcel_id?: string;
@@ -52,6 +54,7 @@ function buildLeadsQuery(searchParams: LeadsPageSearchParams) {
 
   const keys: Array<keyof LeadsPageSearchParams> = [
     'search',
+    'county',
     'city',
     'owner',
     'parcel_id',
@@ -109,7 +112,7 @@ export default async function LeadsPage({
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Lead Feed</h1>
           <p className="text-slate-500 text-sm mt-1">
-            {total > 0 ? `${total} properties scored` : 'No leads yet'}
+            {total > 0 ? `${total} properties scored across Shelby and Jefferson counties` : 'No leads yet'}
           </p>
         </div>
       </div>

@@ -91,6 +91,7 @@ async def _load_leads(
             lead = CRMLeadExport(
                 property=PropertyExport(
                     property_id=str(prop.id),
+                    county=prop.county,
                     parcel_id=prop.parcel_id,
                     address=prop.address,
                     raw_address=prop.raw_address,
@@ -214,7 +215,7 @@ async def _main() -> int:
         print(f"\n[DRY RUN] Would send {len(leads)} lead(s) to: {webhook_url or '(no URL set)'}\n")
         for lead in leads:
             print(
-                f"  {lead.property.parcel_id:20s}  score={lead.score.value:3d}  "
+                f"  {lead.property.county}:{lead.property.parcel_id:20s}  score={lead.score.value:3d}  "
                 f"rank={lead.score.rank}  tags={lead.tags}"
             )
         print()

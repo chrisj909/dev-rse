@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 
 interface LeadDetail {
   property_id: string;
+  county: string;
   parcel_id: string;
   address: string | null;
   city: string | null;
@@ -23,10 +24,18 @@ interface LeadDetail {
   };
 }
 
-async function getLead(parcelId: string): Promise<LeadDetail | null> {
+function formatCounty(county: string) {
+  if (!county) return 'County unavailable';
+  return `${county.charAt(0).toUpperCase()}${county.slice(1)} County`;
+}
+
+async function getLead(parcelId: string, county?: string): Promise<LeadDetail | null> {
   try {
     const baseUrl = await getServerApiBaseUrl();
-    const res = await fetch(`${baseUrl}/api/leads/${encodeURIComponent(parcelId)}`, { cache: 'no-store' });
+    const params = new URLSearchParams();
+    if (county) params.set('county', county);
+    const query = params.toString();
+    const res = await fetch(`${baseUrl}/api/leads/${encodeURIComponent(parcelId)}${query ? `?${query}` : ''}`, { cache: 'no-store' });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
@@ -51,12 +60,12 @@ function RankBadge({ rank }: { rank: string }) {
 export default async function PropertyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ parcel_id?: string }>;
+  searchParams: Promise<{ parcel_id?: string; county?: string }>;
 }) {
-  const { parcel_id } = await searchParams;
+  const { parcel_id, county } = await searchParams;
   if (!parcel_id) notFound();
 
-  const lead = await getLead(parcel_id);
+  const lead = await getLead(parcel_id, county);
   if (!lead) notFound();
 
   const activeSignals = Object.entries(lead.signals).filter(([, isActive]) => Boolean(isActive));
@@ -69,13 +78,17 @@ export default async function PropertyPage({
 
       <div>
         <h1 className="text-2xl font-bold text-slate-900">{lead.address || 'Address unavailable'}</h1>
-        <p className="text-slate-500 mt-1">{[lead.city, lead.state].filter(Boolean).join(', ') || 'Location unavailable'}</p>
+        <p className="text-slate-500 mt-1">{[lead.city, formatCounty(lead.county), lead.state].filter(Boolean).join(', ') || 'Location unavailable'}</p>
       </div>
 
       <div className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">
         <div className="flex justify-between px-5 py-4">
           <span className="text-gray-400">Owner</span>
           <span className="text-white font-medium">{lead.owner_name ?? '—'}</span>
+        </div>
+        <div className="flex justify-between px-5 py-4">
+          <span className="text-gray-400">County</span>
+          <span className="text-white font-medium">{formatCounty(lead.county)}</span>
         </div>
         <div className="flex justify-between px-5 py-4">
           <span className="text-gray-400">Parcel ID</span>

@@ -6,6 +6,7 @@ CLI that reads a CSV of tax delinquency records and updates the signals table.
 
 Expected CSV columns:
     parcel_id       — string, matches properties.parcel_id
+    county          — optional county slug, defaults to shelby
     is_delinquent   — "true"/"false" or "1"/"0"
 
 Usage:
@@ -59,6 +60,7 @@ def _load_csv(path: Path) -> list[dict]:
                 log.warning("Row %d: empty parcel_id — skipping", i)
                 continue
             rows.append({
+                "county": (row.get("county", "shelby") or "shelby").strip().lower(),
                 "parcel_id": parcel_id,
                 "is_delinquent": _parse_bool(is_delinquent_raw),
             })
@@ -83,16 +85,20 @@ async def run(csv_path: Path, dry_run: bool = False) -> None:
     async with async_session_factory() as session:
         for row in rows:
             parcel_id = row["parcel_id"]
+            county = row["county"]
             is_delinquent = row["is_delinquent"]
 
             # Resolve parcel_id → UUID
             result = await session.execute(
-                select(Property.id).where(Property.parcel_id == parcel_id)
+                select(Property.id).where(
+                    Property.county == county,
+                    Property.parcel_id == parcel_id,
+                )
             )
             property_id = result.scalar_one_or_none()
 
             if property_id is None:
-                log.warning("parcel_id=%s not found in properties table — skipping", parcel_id)
+                log.warning("county=%s parcel_id=%s not found in properties table — skipping", county, parcel_id)
                 counts["not_found"] += 1
                 counts["processed"] += 1
                 continue
@@ -107,7 +113,7 @@ async def run(csv_path: Path, dry_run: bool = False) -> None:
                 if wrote:
                     counts["updated"] += 1
             except Exception as exc:
-                log.error("Error processing parcel_id=%s: %s", parcel_id, exc)
+                log.error("Error processing county=%s parcel_id=%s: %s", county, parcel_id, exc)
                 counts["error"] += 1
                 counts["processed"] += 1
 

@@ -33,6 +33,7 @@ class LeadResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     property_id: str
+    county: str = "shelby"
     parcel_id: str
     address: Optional[str] = None
     city: Optional[str] = None
@@ -99,6 +100,7 @@ class PropertyDetailResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     property_id: str
+    county: str = "shelby"
     parcel_id: str
     address: Optional[str] = None
     raw_address: Optional[str] = None

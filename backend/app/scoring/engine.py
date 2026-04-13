@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -127,7 +127,7 @@ class ScoringEngine:
 
     async def score_batch(
         self,
-        properties: list[Property],
+        properties: Sequence[Property],
         session: AsyncSession,
     ) -> dict[str, int]:
         """
@@ -137,7 +137,7 @@ class ScoringEngine:
         here — the caller should commit after each batch for safe rollback.
 
         Args:
-            properties: List of SQLAlchemy Property ORM instances.
+            properties: Sequence of SQLAlchemy Property ORM instances.
             session:    Active async database session.
 
         Returns:

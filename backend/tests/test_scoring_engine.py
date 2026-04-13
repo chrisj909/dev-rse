@@ -273,8 +273,8 @@ class TestScoringEngineScore:
         assert "reasons" in result
 
     @pytest.mark.asyncio
-    async def test_long_term_owner_only_rank_c(self):
-        """long_term_owner only → score=10, rank=C."""
+    async def test_long_term_owner_only_rank_b(self):
+        """long_term_owner only → score=10, rank=B."""
         prop = make_property()
         signal_row = make_signal_row(long_term_owner=True)
         session = make_session(signal_row=signal_row)
@@ -284,11 +284,11 @@ class TestScoringEngineScore:
             result = await engine.score(prop, session)
 
         assert result["score"] == 10
-        assert result["rank"] == "C"
+        assert result["rank"] == "B"
 
     @pytest.mark.asyncio
     async def test_probate_only_rank_b(self):
-        """probate only → score=20, rank=B (20 is in the 15–24 range; A requires ≥25)."""
+        """probate only → score=20, rank=B (20 is in the 10–24 range; A requires ≥25)."""
         prop = make_property()
         signal_row = make_signal_row(probate=True)
         session = make_session(signal_row=signal_row)
@@ -443,7 +443,7 @@ class TestScoringEngineBatch:
         signal_configs = [
             # score=0  → C
             {},
-            # score=10 → C
+            # score=10 → B
             {"long_term_owner": True},
             # score=15 → B
             {"absentee_owner": True},
@@ -473,7 +473,7 @@ class TestScoringEngineBatch:
         counts = await engine.score_batch(properties, AsyncMock())
 
         assert counts["processed"] == 6
-        assert counts["rank_c"] == 2  # score 0 and 10
-        assert counts["rank_b"] == 1  # score 15
+        assert counts["rank_c"] == 1  # score 0
+        assert counts["rank_b"] == 2  # scores 10 and 15
         assert counts["rank_a"] == 3  # scores 25, 30, 75
         assert counts["errors"] == 0

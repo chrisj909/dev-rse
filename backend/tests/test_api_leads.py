@@ -180,6 +180,14 @@ class TestGetTopLeadsWithData:
         lead = test_client.get("/api/leads/top").json()["leads"][0]
         assert lead["parcel_id"] == "SC-PARCEL-999"
 
+    def test_lead_has_county(self, test_client, mock_session):
+        prop = make_mock_property(county="jefferson")
+        sig = make_mock_signal()
+        sc = make_mock_score()
+        _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
+        lead = test_client.get("/api/leads/top").json()["leads"][0]
+        assert lead["county"] == "jefferson"
+
     def test_lead_has_address(self, test_client, mock_session):
         prop = make_mock_property(address="789 ELM AVE")
         sig = make_mock_signal()
@@ -489,6 +497,11 @@ class TestGetTopLeadsFiltering:
         resp = test_client.get("/api/leads/top?city=HOOVER")
         assert resp.status_code == 200
 
+    def test_county_filter_accepted(self, test_client, mock_session):
+        self._empty(mock_session)
+        resp = test_client.get("/api/leads/top?county=jefferson")
+        assert resp.status_code == 200
+
     def test_combined_filters_accepted(self, test_client, mock_session):
         self._empty(mock_session)
         resp = test_client.get(
@@ -602,7 +615,7 @@ class TestGetNewLeadsWithData:
         sc = make_mock_score()
         _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
         lead = test_client.get("/api/leads/new").json()["leads"][0]
-        required_keys = {"property_id", "parcel_id", "address", "city", "state",
+        required_keys = {"property_id", "county", "parcel_id", "address", "city", "state",
                          "zip", "owner_name", "score", "rank", "signals", "last_updated"}
         assert required_keys.issubset(lead.keys())
 
@@ -738,6 +751,12 @@ class TestGetPropertyDetailSuccess:
         data = test_client.get(f"/api/property/{prop.id}").json()
         assert data["parcel_id"] == "SC-DETAIL-001"
 
+    def test_response_has_county(self, test_client, mock_session):
+        prop = make_mock_property(county="jefferson")
+        self._setup(mock_session, prop=prop)
+        data = test_client.get(f"/api/property/{prop.id}").json()
+        assert data["county"] == "jefferson"
+
     def test_response_has_address(self, test_client, mock_session):
         prop = make_mock_property(address="999 OAK DR")
         self._setup(mock_session, prop=prop)
@@ -813,6 +832,44 @@ class TestGetPropertyDetailSuccess:
         prop, _, _ = self._setup(mock_session)
         data = test_client.get(f"/api/property/{prop.id}").json()
         assert "updated_at" in data
+
+
+class TestGetPropertyDetailByParcelId:
+    def test_parcel_route_returns_county_scoped_detail(self, test_client, mock_session):
+        prop_id = uuid.uuid4()
+        prop = make_mock_property(prop_id=prop_id, county="jefferson", parcel_id="JP-001")
+        sig = make_mock_signal(property_id=prop_id)
+        sc = make_mock_score(property_id=prop_id)
+        result = MagicMock()
+        result.all.return_value = [(prop, sig, sc)]
+        mock_session.execute.return_value = result
+
+        resp = test_client.get("/api/leads/JP-001?county=jefferson")
+
+        assert resp.status_code == 200
+        assert resp.json()["county"] == "jefferson"
+
+    def test_parcel_route_requires_county_when_parcel_id_is_ambiguous(self, test_client, mock_session):
+        first_id = uuid.uuid4()
+        second_id = uuid.uuid4()
+        first_row = (
+            make_mock_property(prop_id=first_id, county="shelby", parcel_id="DUP-001"),
+            make_mock_signal(property_id=first_id),
+            make_mock_score(property_id=first_id),
+        )
+        second_row = (
+            make_mock_property(prop_id=second_id, county="jefferson", parcel_id="DUP-001"),
+            make_mock_signal(property_id=second_id),
+            make_mock_score(property_id=second_id),
+        )
+        result = MagicMock()
+        result.all.return_value = [first_row, second_row]
+        mock_session.execute.return_value = result
+
+        resp = test_client.get("/api/leads/DUP-001")
+
+        assert resp.status_code == 409
+        assert "Specify county" in resp.json()["detail"]
 
 
 class TestGetPropertyDetailSignals:

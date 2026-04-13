@@ -49,7 +49,7 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="border-t border-slate-700 px-5 py-4">
-        <p className="text-xs text-slate-500">Shelby County, AL</p>
+        <p className="text-xs text-slate-500">Shelby + Jefferson Counties, AL</p>
       </div>
     </aside>
   );

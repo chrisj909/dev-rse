@@ -10,13 +10,13 @@ Usage:
 What it does:
   1. Reads a CSV file of property records.
   2. Normalizes raw addresses via the address_normalizer utility.
-  3. Upserts records into the `properties` table (dedupe key: parcel_id).
+    3. Upserts records into the `properties` table (dedupe key: county + parcel_id).
   4. Runs absentee_owner + long_term_owner detection via signal_detector.
   5. Upserts signal rows for each property.
   6. Logs: inserted count, updated count, skipped (error) count.
 
 Design rules followed:
-  - parcel_id is the primary dedupe key — never address.
+    - county + parcel_id is the primary dedupe key — never address.
   - Always store raw + normalized addresses side by side.
   - Signals are stateless and recomputable.
   - Script is cron-compatible: clean exit codes, stdout logging, no prompts.
@@ -64,6 +64,7 @@ log = logging.getLogger("rse.ingest")
 # All fields are optional except parcel_id.
 REQUIRED_FIELDS = {"parcel_id"}
 OPTIONAL_FIELDS = {
+    "county",
     "raw_address",
     "city",
     "state",
@@ -286,11 +287,13 @@ async def _upsert_property(session, prop_data: dict) -> tuple[uuid.UUID, bool]:
         **prop_data,
     }
 
-    # Columns to update on conflict (exclude id, parcel_id, created_at)
+    prop_data.setdefault("county", "shelby")
+
+    # Columns to update on conflict (exclude id, key columns, created_at)
     update_values = {
         k: v
         for k, v in prop_data.items()
-        if k not in ("parcel_id",)
+        if k not in ("county", "parcel_id")
     }
     # Always bump updated_at on conflict
     update_values["updated_at"] = datetime.utcnow()
@@ -299,7 +302,7 @@ async def _upsert_property(session, prop_data: dict) -> tuple[uuid.UUID, bool]:
         pg_insert(Property)
         .values(**insert_values)
         .on_conflict_do_update(
-            index_elements=["parcel_id"],
+            index_elements=["county", "parcel_id"],
             set_=update_values,
         )
         .returning(Property.id, Property.created_at, Property.updated_at)

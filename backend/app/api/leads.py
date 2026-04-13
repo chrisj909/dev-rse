@@ -50,6 +50,7 @@ _SORT_FIELDS = {
     "last_updated": Score.last_updated,
     "address": Property.address,
     "city": Property.city,
+    "county": Property.county,
 }
 
 # Ordered list of all signal column names on the Signal ORM model.
@@ -81,6 +82,7 @@ def _build_lead(prop: Property, signal: Signal, score: Score) -> LeadResponse:
     active_signals = _active_signals(signal)
     return LeadResponse(
         property_id=str(getattr(prop, "id", "")),
+        county=_coerce_county(getattr(prop, "county", None)),
         parcel_id=str(getattr(prop, "parcel_id", "") or ""),
         address=_coerce_display_address(prop),
         city=_coerce_text(getattr(prop, "city", None)),
@@ -105,6 +107,7 @@ async def get_top_leads(
     max_score: Optional[int] = Query(default=None, ge=0, description="Maximum score threshold (inclusive)."),
     absentee_owner: Optional[bool] = Query(default=None, description="Filter to absentee-owned properties only."),
     long_term_owner: Optional[bool] = Query(default=None, description="Filter to long-term owner properties."),
+    county: Optional[str] = Query(default=None, description="Filter by county slug: shelby or jefferson."),
     city: Optional[str] = Query(default=None, description="Filter by city name (case-insensitive)."),
     rank: Optional[str] = Query(default=None, description="Filter by rank band: A, B, or C."),
     search: Optional[str] = Query(default=None, description="Search across address, owner name, and parcel ID."),
@@ -112,7 +115,7 @@ async def get_top_leads(
     parcel_id: Optional[str] = Query(default=None, description="Filter by parcel ID substring."),
     min_value: Optional[float] = Query(default=None, ge=0, description="Minimum assessed value (inclusive)."),
     max_value: Optional[float] = Query(default=None, ge=0, description="Maximum assessed value (inclusive)."),
-    sort_by: str = Query(default="score", description="Sort field: score, assessed_value, last_updated, address, city."),
+    sort_by: str = Query(default="score", description="Sort field: score, assessed_value, last_updated, address, city, county."),
     sort_dir: str = Query(default="desc", description="Sort direction: asc or desc."),
     limit: int = Query(default=50, ge=1, le=250, description="Max results to return (default 50, max 250)."),
     offset: int = Query(default=0, ge=0, description="Result offset for pagination."),
@@ -133,6 +136,7 @@ async def get_top_leads(
         max_score=max_score,
         absentee_owner=absentee_owner,
         long_term_owner=long_term_owner,
+        county=county,
         city=city,
         rank=rank,
         search=search,
@@ -245,10 +249,11 @@ async def get_property_detail(
 @router.get("/leads/{parcel_id}", response_model=PropertyDetailResponse)
 async def get_property_detail_by_parcel_id(
     parcel_id: str,
+    county: Optional[str] = Query(default=None, description="Optional county slug to disambiguate duplicate parcel IDs."),
     session: AsyncSession = Depends(get_db),
 ) -> PropertyDetailResponse:
     """Return full property detail using the public parcel_id route key."""
-    row = await _fetch_property_detail_row(session, Property.parcel_id == parcel_id)
+    row = await _fetch_property_detail_row_by_parcel_id(session, parcel_id=parcel_id, county=county)
     return _build_property_detail_response(row)
 
 
@@ -259,6 +264,7 @@ def _build_filter_conditions(
     max_score: Optional[int],
     absentee_owner: Optional[bool],
     long_term_owner: Optional[bool],
+    county: Optional[str],
     city: Optional[str],
     rank: Optional[str],
     search: Optional[str],
@@ -282,6 +288,8 @@ def _build_filter_conditions(
         conditions.append(Signal.absentee_owner == absentee_owner)
     if long_term_owner is not None:
         conditions.append(Signal.long_term_owner == long_term_owner)
+    if county:
+        conditions.append(Property.county == _coerce_county(county))
     if city is not None:
         conditions.append(Property.city.ilike(f"%{city}%"))
     if rank is not None and rank.upper() in {"A", "B", "C"}:
@@ -294,6 +302,7 @@ def _build_filter_conditions(
                 Property.raw_address.ilike(needle),
                 Property.owner_name.ilike(needle),
                 Property.parcel_id.ilike(needle),
+                Property.county.ilike(needle),
                 Property.mailing_address.ilike(needle),
             )
         )
@@ -331,11 +340,36 @@ async def _fetch_property_detail_row(session: AsyncSession, condition) -> tuple[
     return row
 
 
+async def _fetch_property_detail_row_by_parcel_id(
+    session: AsyncSession,
+    *,
+    parcel_id: str,
+    county: Optional[str],
+) -> tuple[Property, Signal, Score]:
+    stmt = (
+        select(Property, Signal, Score)
+        .join(Signal, Signal.property_id == Property.id)
+        .join(Score, Score.property_id == Property.id)
+        .where(Property.parcel_id == parcel_id)
+    )
+    if county:
+        stmt = stmt.where(Property.county == _coerce_county(county))
+
+    result = await session.execute(stmt)
+    rows = result.all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="Property not found.")
+    if len(rows) > 1:
+        raise HTTPException(status_code=409, detail="Multiple properties matched this parcel ID. Specify county.")
+    return rows[0]
+
+
 def _build_property_detail_response(row: tuple[Property, Signal, Score]) -> PropertyDetailResponse:
     prop, signal, score = row
 
     return PropertyDetailResponse(
         property_id=str(getattr(prop, "id", "")),
+        county=_coerce_county(getattr(prop, "county", None)),
         parcel_id=str(getattr(prop, "parcel_id", "") or ""),
         address=_coerce_display_address(prop),
         raw_address=_coerce_text(getattr(prop, "raw_address", None)),
@@ -359,7 +393,7 @@ def _build_property_detail_response(row: tuple[Property, Signal, Score]) -> Prop
             score=_coerce_int(getattr(score, "score", None), default=0),
             rank=_coerce_rank(getattr(score, "rank", None)),
             reason=_coerce_reason_list(getattr(score, "reason", None)),
-            scoring_version=_coerce_text(getattr(score, "scoring_version", None)) or "v1",
+            scoring_version=_coerce_text(getattr(score, "scoring_version", None)) or "v2",
             last_updated=_coerce_datetime(getattr(score, "last_updated", None)),
         ),
         created_at=_coerce_datetime(getattr(prop, "created_at", None)),
@@ -401,6 +435,11 @@ def _coerce_text(value: object) -> str | None:
 def _coerce_state(value: object) -> str:
     state = _coerce_text(value)
     return state.upper() if state else "AL"
+
+
+def _coerce_county(value: object) -> str:
+    county = _coerce_text(value)
+    return county.lower() if county else "shelby"
 
 
 def _coerce_rank(value: object) -> str:

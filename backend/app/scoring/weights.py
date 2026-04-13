@@ -7,7 +7,7 @@ Versioned weight definitions for the scoring engine.
 Version string is stored on every score row so we can recompute
 or compare across weight versions in the future.
 
-Signal weights (v1):
+Signal weights (v2):
   absentee_owner:  +15
   long_term_owner: +10
   tax_delinquent:  +25  (placeholder — no data yet)
@@ -20,13 +20,13 @@ Distress signals = {tax_delinquent, pre_foreclosure, probate, code_violation}
 
 Ranks:
   A = 25+
-  B = 15–24
-  C = <15
+    B = 10–24
+    C = <10
 """
 from __future__ import annotations
 
 # ── Version ───────────────────────────────────────────────────────────────────
-SCORING_VERSION: str = "v1"
+SCORING_VERSION: str = "v2"
 
 # ── Signal weights: signal_name → points awarded if flag is True ──────────────
 WEIGHTS: dict[str, int] = {
@@ -52,7 +52,7 @@ DISTRESS_COMBO_THRESHOLD: int = 2
 
 # ── Rank thresholds ───────────────────────────────────────────────────────────
 RANK_A_MIN: int = 25   # score >= 25 → rank A
-RANK_B_MIN: int = 15   # score >= 15 → rank B; score < 15 → rank C
+RANK_B_MIN: int = 10   # score >= 10 → rank B; score < 10 → rank C
 
 
 # ── Core scoring function ─────────────────────────────────────────────────────

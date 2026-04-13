@@ -56,6 +56,7 @@ def _build_crm_lead(
     return CRMLeadExport(
         property=PropertyExport(
             property_id=str(prop.id),
+            county=prop.county,
             parcel_id=prop.parcel_id,
             address=prop.address,
             raw_address=prop.raw_address,

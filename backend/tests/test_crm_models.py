@@ -51,6 +51,7 @@ from app.models.crm import (
 def make_property_export(**overrides) -> PropertyExport:
     defaults = dict(
         property_id="prop-uuid-001",
+        county="shelby",
         parcel_id="SC-0001",
         address="123 MAIN ST",
         raw_address="123 Main Street",
@@ -83,7 +84,7 @@ def make_signals_export(**overrides) -> SignalsExport:
 
 
 def make_score_export(**overrides) -> ScoreExport:
-    defaults = dict(value=35, rank="A", version="v1")
+    defaults = dict(value=35, rank="A", version="v2")
     defaults.update(overrides)
     return ScoreExport(**defaults)
 
@@ -105,6 +106,7 @@ class TestPropertyExport:
     def test_all_fields_roundtrip(self):
         prop = make_property_export()
         assert prop.property_id == "prop-uuid-001"
+        assert prop.county == "shelby"
         assert prop.parcel_id == "SC-0001"
         assert prop.address == "123 MAIN ST"
         assert prop.raw_address == "123 Main Street"
@@ -119,6 +121,7 @@ class TestPropertyExport:
     def test_optional_fields_default_to_none(self):
         prop = PropertyExport(
             property_id="p1",
+            county="shelby",
             parcel_id="X-001",
             created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
             updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
@@ -135,6 +138,7 @@ class TestPropertyExport:
     def test_state_defaults_to_al(self):
         prop = PropertyExport(
             property_id="p1",
+            county="shelby",
             parcel_id="X-001",
             created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
             updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
@@ -145,7 +149,7 @@ class TestPropertyExport:
         prop = make_property_export()
         d = prop.model_dump()
         expected_keys = {
-            "property_id", "parcel_id", "address", "raw_address", "city",
+            "property_id", "county", "parcel_id", "address", "raw_address", "city",
             "state", "zip", "owner_name", "mailing_address", "last_sale_date",
             "assessed_value", "created_at", "updated_at",
         }
@@ -213,25 +217,25 @@ class TestSignalsExport:
 
 class TestScoreExport:
     def test_basic_fields(self):
-        sc = ScoreExport(value=35, rank="A", version="v1")
+        sc = ScoreExport(value=35, rank="A", version="v2")
         assert sc.value == 35
         assert sc.rank == "A"
-        assert sc.version == "v1"
+        assert sc.version == "v2"
 
     def test_rank_b(self):
-        sc = ScoreExport(value=20, rank="B", version="v1")
+        sc = ScoreExport(value=20, rank="B", version="v2")
         assert sc.rank == "B"
 
     def test_rank_c(self):
-        sc = ScoreExport(value=10, rank="C", version="v1")
+        sc = ScoreExport(value=10, rank="C", version="v2")
         assert sc.rank == "C"
 
     def test_score_zero(self):
-        sc = ScoreExport(value=0, rank="C", version="v1")
+        sc = ScoreExport(value=0, rank="C", version="v2")
         assert sc.value == 0
 
     def test_model_dump_keys(self):
-        sc = ScoreExport(value=25, rank="A", version="v1")
+        sc = ScoreExport(value=25, rank="A", version="v2")
         d = sc.model_dump()
         assert set(d.keys()) == {"value", "rank", "version"}
 
@@ -245,6 +249,7 @@ class TestScoreExport:
 class TestCRMLeadExport:
     def test_assembles_from_sub_models(self):
         lead = make_crm_lead()
+        assert lead.property.county == "shelby"
         assert lead.property.parcel_id == "SC-0001"
         assert lead.signals.absentee_owner is True
         assert lead.score.value == 35
@@ -278,6 +283,7 @@ class TestCRMLeadExport:
         assert "tags" in d
         assert "exported_at" in d
         # Nested keys
+        assert "county" in d["property"]
         assert "parcel_id" in d["property"]
         assert "absentee_owner" in d["signals"]
         assert "value" in d["score"]
@@ -292,12 +298,13 @@ class TestCRMLeadExport:
         assert lead.tags == []
 
     def test_score_value_zero(self):
-        lead = make_crm_lead(score=ScoreExport(value=0, rank="C", version="v1"))
+        lead = make_crm_lead(score=ScoreExport(value=0, rank="C", version="v2"))
         assert lead.score.value == 0
 
     def test_property_all_none_optionals(self):
         prop = PropertyExport(
             property_id="p99",
+            county="shelby",
             parcel_id="NULL-001",
             created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
             updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
@@ -305,7 +312,7 @@ class TestCRMLeadExport:
         lead = CRMLeadExport(
             property=prop,
             signals=SignalsExport(),
-            score=ScoreExport(value=0, rank="C", version="v1"),
+            score=ScoreExport(value=0, rank="C", version="v2"),
         )
         assert lead.property.address is None
         assert lead.property.city is None

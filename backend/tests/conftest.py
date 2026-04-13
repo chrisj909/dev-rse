@@ -45,6 +45,7 @@ def test_client(mock_session: AsyncMock):
 def make_mock_property(
     *,
     prop_id: uuid.UUID | None = None,
+    county: str = "shelby",
     parcel_id: str = "SC-TEST-0001",
     address: str | None = "123 MAIN ST",
     city: str | None = "HOOVER",
@@ -60,6 +61,7 @@ def make_mock_property(
     """Build a mock Property ORM object with sensible defaults."""
     prop = MagicMock()
     prop.id = prop_id or uuid.uuid4()
+    prop.county = county
     prop.parcel_id = parcel_id
     prop.address = address
     prop.raw_address = raw_address
@@ -107,7 +109,7 @@ def make_mock_score(
     score: int = 25,
     rank: str = "A",
     reason: list[str] | None = None,
-    scoring_version: str = "v1",
+    scoring_version: str = "v2",
     last_updated: datetime | None = None,
 ) -> MagicMock:
     """Build a mock Score ORM object."""

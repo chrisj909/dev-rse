@@ -5,6 +5,7 @@ import { getClientApiBaseUrl } from '../../lib/api';
 
 interface IngestResult {
   status: string;
+  county?: string;
   fetched?: number;
   upserted?: number;
   signals?: { processed?: number; error?: string };
@@ -20,6 +21,7 @@ export default function IngestPage() {
   const [error, setError] = useState<string | null>(null);
   const [dryRun, setDryRun] = useState(true);
   const [delinquentOnly, setDelinquentOnly] = useState(false);
+  const [county, setCounty] = useState('all');
   const [limit, setLimit] = useState('100');
   const [cronSecret, setCronSecret] = useState('');
 
@@ -29,6 +31,7 @@ export default function IngestPage() {
     setError(null);
     try {
       const params = new URLSearchParams();
+      if (county) params.set('county', county);
       if (dryRun) params.set('dry_run', 'true');
       if (delinquentOnly) params.set('delinquent_only', 'true');
       if (limit) params.set('limit', limit);
@@ -53,7 +56,7 @@ export default function IngestPage() {
     <div className="p-6 max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Data Ingestion</h1>
-        <p className="text-slate-500 text-sm mt-1">Pull Shelby County property data and score leads</p>
+        <p className="text-slate-500 text-sm mt-1">Pull Shelby and Jefferson County property data and score leads</p>
       </div>
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-5 space-y-3">
         <h2 className="text-white font-semibold text-sm uppercase tracking-wide mb-3">Active Sources</h2>
@@ -65,10 +68,17 @@ export default function IngestPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <span className="w-2 h-2 rounded-full bg-cyan-400" />
+          <div>
+            <p className="text-white text-sm font-medium">Jefferson County ArcGIS</p>
+            <p className="text-gray-400 text-xs">Public parcel map service · owner, mailing, address, assessed value</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
           <span className="w-2 h-2 rounded-full bg-yellow-400" />
           <div>
             <p className="text-white text-sm font-medium">GovEase Tax Lien Auction</p>
-            <p className="text-gray-400 text-xs">Active when auction cycle is live</p>
+            <p className="text-gray-400 text-xs">Shelby overlay only at the moment; Jefferson feed not publicly exposed there</p>
           </div>
         </div>
       </div>
@@ -85,9 +95,18 @@ export default function IngestPage() {
           <input type="checkbox" checked={delinquentOnly} onChange={e => setDelinquentOnly(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
           <div>
             <p className="text-white text-sm">Delinquent only (faster)</p>
-            <p className="text-gray-400 text-xs">Only fetch tax-delinquent properties</p>
+            <p className="text-gray-400 text-xs">Only fetch tax-delinquent properties from sources that publish delinquency fields</p>
           </div>
         </label>
+        <div>
+          <label className="block text-white text-sm mb-1">County Scope</label>
+          <select value={county} onChange={e => setCounty(e.target.value)} className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
+            <option value="all">All supported counties</option>
+            <option value="shelby">Shelby County</option>
+            <option value="jefferson">Jefferson County</option>
+          </select>
+          <p className="text-gray-400 text-xs mt-1">Use Jefferson for parcel expansion research or all counties for a combined ingest.</p>
+        </div>
         <div>
           <label className="block text-white text-sm mb-1">Record limit</label>
           <input type="number" value={limit} onChange={e => setLimit(e.target.value)} placeholder="Leave blank for all records" className="w-full bg-gray-700 border border-gray-600 text-white placeholder-gray-500 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
@@ -111,6 +130,7 @@ export default function IngestPage() {
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-green-400" />
             <h2 className="text-white font-semibold">{result.status === 'dry_run' ? 'Dry Run Complete' : 'Ingestion Complete'}</h2>
+            {result.county && <span className="text-gray-400 text-xs">scope: {result.county}</span>}
             {result.elapsed_seconds && <span className="text-gray-400 text-xs ml-auto">{result.elapsed_seconds}s</span>}
           </div>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

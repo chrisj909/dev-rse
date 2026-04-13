@@ -1,11 +1,11 @@
-"""
-Alembic migration environment.
+"""Alembic migration environment.
 Uses DATABASE_SYNC_URL from .env for synchronous migrations.
 Auto-generates migrations from SQLAlchemy models.
 """
 import os
 import sys
 from logging.config import fileConfig
+from urllib.parse import urlsplit
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -24,8 +24,36 @@ import app.models  # noqa: E402, F401  — registers all models on Base.metadata
 # Alembic config object
 config = context.config
 
+def _derive_sync_url() -> str:
+    sync_url = os.getenv("DATABASE_SYNC_URL", "").strip()
+    if sync_url:
+        return sync_url
+
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if database_url:
+        return (
+            database_url
+            .replace("postgresql+asyncpg://", "postgresql://")
+            .replace("postgres://", "postgresql://")
+        )
+
+    return "postgresql://rse_user:rse_password@db:5432/rse_db"
+
+
+def _is_local_database_url(url: str) -> bool:
+    parsed = urlsplit(url)
+    hostname = (parsed.hostname or "").lower()
+    return hostname in {"", "localhost", "127.0.0.1", "db"}
+
+
 # Override sqlalchemy.url with the sync URL from environment
-sync_url = os.getenv("DATABASE_SYNC_URL", "postgresql://rse_user:rse_password@db:5432/rse_db")
+sync_url = _derive_sync_url()
+runtime_env = (os.getenv("APP_ENV") or os.getenv("VERCEL_ENV") or "development").strip().lower()
+if runtime_env == "production" and _is_local_database_url(sync_url):
+    raise RuntimeError(
+        "Alembic resolved a local DATABASE_SYNC_URL while APP_ENV is production. "
+        "Run migrations from a shell with Supabase/Vercel database env vars set."
+    )
 # configparser treats % as interpolation — escape them before setting
 config.set_main_option("sqlalchemy.url", sync_url.replace("%", "%%"))
 
