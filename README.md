@@ -25,7 +25,7 @@ Implemented now:
 - live ingest from Jefferson County ArcGIS
 - optional delinquent-only ingest mode
 - property upsert keyed by `(county, parcel_id)`
-- signal generation for absentee ownership and long-term ownership
+- signal generation for absentee ownership, long-term ownership, out-of-state owners, and likely corporate owners
 - Shelby tax-delinquency ingestion path
 - weighted lead scoring and rank assignment
 - leads list, recent leads, property detail, CRM export, and cron APIs
@@ -197,6 +197,8 @@ Current signal fields in active use:
 
 - `absentee_owner`
 - `long_term_owner`
+- `out_of_state_owner`
+- `corporate_owner`
 - `tax_delinquent`
 - `pre_foreclosure`
 - `probate`
@@ -223,6 +225,8 @@ Current scoring weights are defined in `backend/app/scoring/weights.py`.
 | --- | --- |
 | `absentee_owner` | 15 |
 | `long_term_owner` | 10 |
+| `out_of_state_owner` | 12 |
+| `corporate_owner` | 8 |
 | `tax_delinquent` | 25 |
 | `pre_foreclosure` | 30 |
 | `probate` | 20 |
@@ -258,6 +262,12 @@ Implemented with real data today:
 - `long_term_owner`
    source: `last_sale_date`
    implementation: computed in `SignalEngine`
+- `out_of_state_owner`
+   source: state suffix inferred from normalized mailing address versus property state
+   implementation: computed in `SignalEngine`
+- `corporate_owner`
+   source: owner-name entity matching for LLC, trust, holdings, and similar patterns
+   implementation: computed in `SignalEngine`
 - `tax_delinquent`
    source: Shelby overlay / explicit tax-delinquency ingestion
    implementation: written through `TaxDelinquencyService`
@@ -266,6 +276,7 @@ Present in the model but still placeholder-stubbed in the signal engine:
 
 - `pre_foreclosure`
 - `probate`
+- `eviction`
 - `code_violation`
 
 This matters because the scoring model is broader than the live input coverage. Rank math is already in place for distress-heavy cases, but most current production records are still driven by ownership and tax-overlay signals rather than a full distress stack.
@@ -275,7 +286,9 @@ This matters because the scoring model is broader than the live input coverage. 
 | Active signals | Score | Rank |
 | --- | --- | --- |
 | none | 0 | C |
+| `corporate_owner` | 8 | C |
 | `long_term_owner` | 10 | B |
+| `out_of_state_owner` | 12 | B |
 | `absentee_owner` | 15 | B |
 | `absentee_owner` + `long_term_owner` | 25 | A |
 | `tax_delinquent` | 25 | A |
@@ -286,8 +299,9 @@ The last example is `25 + 30 + 20 distress bonus = 75`.
 
 ### 8.4 Current Scoring Limitations
 
+- the new owner-pattern signals are intentionally heuristic rather than title-perfect; they broaden lead coverage across both counties but still need production tuning against actual deal outcomes
 - Jefferson data currently contributes parcel, address, mailing, ownership, and value data, but not the richer distress overlays needed to fully exploit the higher-value scoring branches.
-- `pre_foreclosure`, `probate`, and `code_violation` are scored if present, but their live ingestion pipelines are not yet implemented.
+- `pre_foreclosure`, `probate`, `eviction`, and `code_violation` are scored if present, but their live ingestion pipelines are not yet implemented.
 - `tax_delinquent` is materially stronger in Shelby than Jefferson because the Shelby overlay path is real and Jefferson currently lacks an equivalent public source in this repo.
 
 ### 8.5 Scoring Expansion Plan

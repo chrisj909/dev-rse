@@ -31,6 +31,8 @@ class Signal(Base):
     # ── Active signals (MVP — computed from property/tax data) ────────────
     absentee_owner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     long_term_owner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    out_of_state_owner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    corporate_owner: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # ── Placeholder signals (wired in Sprint 5+) ─────────────────────────
     tax_delinquent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

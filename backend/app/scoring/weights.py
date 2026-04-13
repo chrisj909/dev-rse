@@ -7,9 +7,11 @@ Versioned weight definitions for the scoring engine.
 Version string is stored on every score row so we can recompute
 or compare across weight versions in the future.
 
-Signal weights (v2):
+Signal weights (v3):
   absentee_owner:  +15
   long_term_owner: +10
+    out_of_state_owner: +12
+    corporate_owner: +8
   tax_delinquent:  +25  (placeholder — no data yet)
   pre_foreclosure: +30  (placeholder)
   probate:         +20  (placeholder)
@@ -26,12 +28,14 @@ Ranks:
 from __future__ import annotations
 
 # ── Version ───────────────────────────────────────────────────────────────────
-SCORING_VERSION: str = "v2"
+SCORING_VERSION: str = "v3"
 
 # ── Signal weights: signal_name → points awarded if flag is True ──────────────
 WEIGHTS: dict[str, int] = {
     "absentee_owner":  15,
     "long_term_owner": 10,
+    "out_of_state_owner": 12,
+    "corporate_owner": 8,
     "tax_delinquent":  25,
     "pre_foreclosure": 30,
     "probate":         20,

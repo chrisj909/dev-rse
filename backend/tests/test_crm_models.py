@@ -73,6 +73,8 @@ def make_signals_export(**overrides) -> SignalsExport:
     defaults = dict(
         absentee_owner=True,
         long_term_owner=True,
+        out_of_state_owner=False,
+        corporate_owner=False,
         tax_delinquent=False,
         pre_foreclosure=False,
         probate=False,
@@ -171,6 +173,8 @@ class TestSignalsExport:
         sig = SignalsExport()
         assert sig.absentee_owner is False
         assert sig.long_term_owner is False
+        assert sig.out_of_state_owner is False
+        assert sig.corporate_owner is False
         assert sig.tax_delinquent is False
         assert sig.pre_foreclosure is False
         assert sig.probate is False
@@ -181,6 +185,8 @@ class TestSignalsExport:
         sig = SignalsExport(
             absentee_owner=True,
             long_term_owner=True,
+            out_of_state_owner=True,
+            corporate_owner=True,
             tax_delinquent=True,
             pre_foreclosure=True,
             probate=True,
@@ -188,7 +194,7 @@ class TestSignalsExport:
             code_violation=True,
         )
         assert all([
-            sig.absentee_owner, sig.long_term_owner, sig.tax_delinquent,
+            sig.absentee_owner, sig.long_term_owner, sig.out_of_state_owner, sig.corporate_owner, sig.tax_delinquent,
             sig.pre_foreclosure, sig.probate, sig.eviction, sig.code_violation,
         ])
 
@@ -196,18 +202,20 @@ class TestSignalsExport:
         sig = SignalsExport(absentee_owner=True, long_term_owner=True)
         assert sig.absentee_owner is True
         assert sig.long_term_owner is True
+        assert sig.out_of_state_owner is False
+        assert sig.corporate_owner is False
         assert sig.tax_delinquent is False
 
     def test_model_dump_has_seven_fields(self):
         sig = SignalsExport()
         d = sig.model_dump()
-        assert len(d) == 7
+        assert len(d) == 9
 
     def test_expected_signal_fields_present(self):
         sig = SignalsExport()
         d = sig.model_dump()
         expected = {
-            "absentee_owner", "long_term_owner", "tax_delinquent",
+            "absentee_owner", "long_term_owner", "out_of_state_owner", "corporate_owner", "tax_delinquent",
             "pre_foreclosure", "probate", "eviction", "code_violation",
         }
         assert set(d.keys()) == expected

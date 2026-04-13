@@ -62,7 +62,7 @@ _PROPERTY_KEYS = {
 }
 
 _SIGNALS_KEYS = {
-    "absentee_owner", "long_term_owner", "tax_delinquent",
+    "absentee_owner", "long_term_owner", "out_of_state_owner", "corporate_owner", "tax_delinquent",
     "pre_foreclosure", "probate", "eviction", "code_violation",
 }
 

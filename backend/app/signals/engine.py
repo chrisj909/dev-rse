@@ -35,7 +35,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.property import Property
 from app.models.signal import Signal
 from app.services.address_normalizer import normalize_address
-from app.services.signal_detector import detect_absentee_owner, detect_long_term_owner
+from app.services.signal_detector import (
+    detect_absentee_owner,
+    detect_corporate_owner,
+    detect_long_term_owner,
+    detect_out_of_state_owner,
+)
 
 log = logging.getLogger("rse.signal_engine")
 
@@ -90,6 +95,19 @@ def _long_term_owner_detector(prop: Property) -> bool:
     return detect_long_term_owner(sale_date)
 
 
+def _out_of_state_owner_detector(prop: Property) -> bool:
+    """Adapter: detect out-of-state owners from mailing address state suffix."""
+    return detect_out_of_state_owner(
+        normalized_mailing_address=prop.mailing_address,
+        property_state=prop.state,
+    )
+
+
+def _corporate_owner_detector(prop: Property) -> bool:
+    """Adapter: detect owner names that look like corporate or trust entities."""
+    return detect_corporate_owner(prop.owner_name)
+
+
 # ── Placeholder / stub detectors ──────────────────────────────────────────────
 # These return False until their real data ingestion pipelines are wired up.
 # tax_delinquent is written directly by TaxDelinquencyService; the engine
@@ -134,6 +152,11 @@ def _pre_foreclosure_stub(prop: Property) -> bool:  # pragma: no cover
     Will be powered by Alabama Court System (Alacourt) data (source 3.4).
     Returns False until that ingestion pipeline is built.
     """
+    return False
+
+
+def _eviction_stub(prop: Property) -> bool:  # pragma: no cover
+    """Stub: eviction filing signal until a public eviction data source is wired."""
     return False
 
 
@@ -317,6 +340,8 @@ class SignalEngine:
             "property_id": property_id,
             "absentee_owner": flags.get("absentee_owner", False),
             "long_term_owner": flags.get("long_term_owner", False),
+            "out_of_state_owner": flags.get("out_of_state_owner", False),
+            "corporate_owner": flags.get("corporate_owner", False),
             "tax_delinquent": flags.get("tax_delinquent", False),
             "pre_foreclosure": flags.get("pre_foreclosure", False),
             "probate": flags.get("probate", False),
@@ -345,7 +370,10 @@ class SignalEngine:
 
 SignalEngine.register("absentee_owner", _absentee_owner_detector)
 SignalEngine.register("long_term_owner", _long_term_owner_detector)
+SignalEngine.register("out_of_state_owner", _out_of_state_owner_detector)
+SignalEngine.register("corporate_owner", _corporate_owner_detector)
 SignalEngine.register("tax_delinquent", _tax_delinquent_stub)
 SignalEngine.register("probate", _probate_stub)
+SignalEngine.register("eviction", _eviction_stub)
 SignalEngine.register("code_violation", _code_violation_stub)
 SignalEngine.register("pre_foreclosure", _pre_foreclosure_stub)

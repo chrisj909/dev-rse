@@ -436,6 +436,8 @@ class TestGetTopLeadsSignals:
         sig = make_mock_signal(
             absentee_owner=True,
             long_term_owner=True,
+            out_of_state_owner=True,
+            corporate_owner=True,
             tax_delinquent=True,
             pre_foreclosure=True,
             probate=True,
@@ -445,11 +447,11 @@ class TestGetTopLeadsSignals:
         sc = make_mock_score(score=100, rank="A")
         _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
         lead = test_client.get("/api/leads/top").json()["leads"][0]
-        expected = [
-            "absentee_owner", "long_term_owner", "tax_delinquent",
-            "pre_foreclosure", "probate", "eviction", "code_violation",
-        ]
-        assert lead["signals"] == expected
+        expected = {
+            "absentee_owner", "long_term_owner", "out_of_state_owner", "corporate_owner",
+            "tax_delinquent", "pre_foreclosure", "probate", "eviction", "code_violation",
+        }
+        assert set(lead["signals"]) == expected
 
     def test_signals_order_is_canonical(self, test_client, mock_session):
         """Active signals should follow the canonical field order."""
@@ -930,12 +932,12 @@ class TestGetPropertyDetailSignals:
         signals = data["signals"]
         assert all(not v for v in signals.values())
 
-    def test_signals_object_has_all_seven_fields(self, test_client, mock_session):
+    def test_signals_object_has_all_nine_fields(self, test_client, mock_session):
         prop = self._setup_with_signal(mock_session)
         data = test_client.get(f"/api/property/{prop.id}").json()
         expected_fields = {
-            "absentee_owner", "long_term_owner", "tax_delinquent",
-            "pre_foreclosure", "probate", "eviction", "code_violation",
+            "absentee_owner", "long_term_owner", "out_of_state_owner", "corporate_owner",
+            "tax_delinquent", "pre_foreclosure", "probate", "eviction", "code_violation",
         }
         assert expected_fields == set(data["signals"].keys())
 

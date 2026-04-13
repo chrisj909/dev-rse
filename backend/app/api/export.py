@@ -73,6 +73,8 @@ def _build_crm_lead(
         signals=SignalsExport(
             absentee_owner=signal.absentee_owner,
             long_term_owner=signal.long_term_owner,
+            out_of_state_owner=signal.out_of_state_owner,
+            corporate_owner=signal.corporate_owner,
             tax_delinquent=signal.tax_delinquent,
             pre_foreclosure=signal.pre_foreclosure,
             probate=signal.probate,

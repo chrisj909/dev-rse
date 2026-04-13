@@ -37,6 +37,8 @@ log = logging.getLogger("rse.scoring_engine")
 _SIGNAL_COLUMNS = [
     "absentee_owner",
     "long_term_owner",
+    "out_of_state_owner",
+    "corporate_owner",
     "tax_delinquent",
     "pre_foreclosure",
     "probate",

@@ -14,7 +14,9 @@ import pytest
 from app.services.signal_detector import (
     LONG_TERM_OWNER_YEARS,
     detect_absentee_owner,
+    detect_corporate_owner,
     detect_long_term_owner,
+    detect_out_of_state_owner,
     detect_property_signals,
 )
 
@@ -141,6 +143,28 @@ class TestDetectLongTermOwner:
     def test_threshold_constant_is_10(self):
         """Ensure the threshold constant is set to 10 years per BUILD_PLAN spec."""
         assert LONG_TERM_OWNER_YEARS == 10
+
+
+class TestDetectOutOfStateOwner:
+    def test_al_mailing_not_flagged(self):
+        assert detect_out_of_state_owner("PO BOX 1 BIRMINGHAM AL 35203", property_state="AL") is False
+
+    def test_non_al_mailing_flagged(self):
+        assert detect_out_of_state_owner("PO BOX 1 ATLANTA GA 30303", property_state="AL") is True
+
+    def test_missing_mailing_not_flagged(self):
+        assert detect_out_of_state_owner(None, property_state="AL") is False
+
+
+class TestDetectCorporateOwner:
+    def test_llc_flagged(self):
+        assert detect_corporate_owner("MAPLE STREET HOLDINGS LLC") is True
+
+    def test_trust_flagged(self):
+        assert detect_corporate_owner("SMITH FAMILY TRUST") is True
+
+    def test_person_name_not_flagged(self):
+        assert detect_corporate_owner("JANE DOE") is False
 
 
 # ─────────────────────────────────────────────────────────────────────────────

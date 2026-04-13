@@ -68,6 +68,8 @@ class SignalDetail(BaseModel):
 
     absentee_owner: bool = False
     long_term_owner: bool = False
+    out_of_state_owner: bool = False
+    corporate_owner: bool = False
     tax_delinquent: bool = False
     pre_foreclosure: bool = False
     probate: bool = False

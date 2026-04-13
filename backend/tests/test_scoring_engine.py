@@ -59,9 +59,12 @@ def make_signal_row(**flags) -> MagicMock:
     defaults = {
         "absentee_owner":  False,
         "long_term_owner": False,
+        "out_of_state_owner": False,
+        "corporate_owner": False,
         "tax_delinquent":  False,
         "pre_foreclosure": False,
         "probate":         False,
+        "eviction":        False,
         "code_violation":  False,
     }
     defaults.update(flags)
@@ -180,11 +183,13 @@ class TestScoringEngineScore:
 
     @pytest.mark.asyncio
     async def test_all_signals_active(self):
-        """All six signals → 115 + 20 combo = 135, rank A."""
+        """All weighted signals active → sum(weights) + combo bonus, rank A."""
         prop = make_property()
         signal_row = make_signal_row(
             absentee_owner=True,
             long_term_owner=True,
+            out_of_state_owner=True,
+            corporate_owner=True,
             tax_delinquent=True,
             pre_foreclosure=True,
             probate=True,
@@ -285,6 +290,32 @@ class TestScoringEngineScore:
 
         assert result["score"] == 10
         assert result["rank"] == "B"
+
+    @pytest.mark.asyncio
+    async def test_out_of_state_owner_only_rank_b(self):
+        prop = make_property()
+        signal_row = make_signal_row(out_of_state_owner=True)
+        session = make_session(signal_row=signal_row)
+
+        engine = ScoringEngine()
+        with patch.object(engine, "_upsert_score", new_callable=AsyncMock):
+            result = await engine.score(prop, session)
+
+        assert result["score"] == 12
+        assert result["rank"] == "B"
+
+    @pytest.mark.asyncio
+    async def test_corporate_owner_only_rank_c(self):
+        prop = make_property()
+        signal_row = make_signal_row(corporate_owner=True)
+        session = make_session(signal_row=signal_row)
+
+        engine = ScoringEngine()
+        with patch.object(engine, "_upsert_score", new_callable=AsyncMock):
+            result = await engine.score(prop, session)
+
+        assert result["score"] == 8
+        assert result["rank"] == "C"
 
     @pytest.mark.asyncio
     async def test_probate_only_rank_b(self):
@@ -461,8 +492,16 @@ class TestScoringEngineBatch:
             signal_row = make_signal_row(**signal_configs[idx])
             flags = {
                 col: getattr(signal_row, col, False)
-                for col in ["absentee_owner", "long_term_owner", "tax_delinquent",
-                            "pre_foreclosure", "probate", "code_violation"]
+                for col in [
+                    "absentee_owner",
+                    "long_term_owner",
+                    "out_of_state_owner",
+                    "corporate_owner",
+                    "tax_delinquent",
+                    "pre_foreclosure",
+                    "probate",
+                    "code_violation",
+                ]
             }
             from app.scoring.weights import calculate_score
             score_val, rank, reasons = calculate_score(flags)

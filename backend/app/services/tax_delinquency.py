@@ -112,6 +112,8 @@ class TaxDelinquencyService:
                 # until the next signal engine run refreshes them.
                 absentee_owner=False,
                 long_term_owner=False,
+                out_of_state_owner=False,
+                corporate_owner=False,
                 pre_foreclosure=False,
                 probate=False,
                 eviction=False,

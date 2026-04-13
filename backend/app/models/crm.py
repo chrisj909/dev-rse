@@ -55,6 +55,8 @@ class SignalsExport(BaseModel):
 
     absentee_owner: bool = False
     long_term_owner: bool = False
+    out_of_state_owner: bool = False
+    corporate_owner: bool = False
     tax_delinquent: bool = False
     pre_foreclosure: bool = False
     probate: bool = False
@@ -76,7 +78,7 @@ class ScoreExport(BaseModel):
 
     value: int
     rank: str       # "A" | "B" | "C"
-    version: str    # e.g. "v2"
+    version: str    # e.g. "v3"
 
 
 # ── Full CRM lead record ──────────────────────────────────────────────────────
@@ -89,7 +91,7 @@ class CRMLeadExport(BaseModel):
       {
         "property": { ...all property fields },
         "signals":  { ...all signal booleans },
-        "score":    { "value": 35, "rank": "A", "version": "v2" },
+        "score":    { "value": 35, "rank": "A", "version": "v3" },
         "tags":     ["absentee_owner", "long_term_owner"],
         "exported_at": "2026-04-03T..."
       }

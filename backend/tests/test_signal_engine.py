@@ -30,7 +30,9 @@ import pytest
 from app.signals.engine import (
     SignalEngine,
     _absentee_owner_detector,
+    _corporate_owner_detector,
     _long_term_owner_detector,
+    _out_of_state_owner_detector,
 )
 
 
@@ -191,6 +193,26 @@ class TestLongTermOwnerDetectorAdapter:
         assert _long_term_owner_detector(prop) is True
 
 
+class TestCrossCountyOwnerPatternAdapters:
+    def test_out_of_state_owner_detector_true(self):
+        prop = make_property(mailing_address="PO BOX 99 ATLANTA GA 30303")
+        assert _out_of_state_owner_detector(prop) is True
+
+    def test_out_of_state_owner_detector_false(self):
+        prop = make_property(mailing_address="PO BOX 99 BIRMINGHAM AL 35203")
+        assert _out_of_state_owner_detector(prop) is False
+
+    def test_corporate_owner_detector_true(self):
+        prop = make_property()
+        prop.owner_name = "MAPLE STREET HOLDINGS LLC"
+        assert _corporate_owner_detector(prop) is True
+
+    def test_corporate_owner_detector_false(self):
+        prop = make_property()
+        prop.owner_name = "JANE DOE"
+        assert _corporate_owner_detector(prop) is False
+
+
 # ── SignalEngine.process ──────────────────────────────────────────────────────
 
 class TestSignalEngineProcess:
@@ -215,6 +237,8 @@ class TestSignalEngineProcess:
 
         assert flags["absentee_owner"] is True
         assert flags["long_term_owner"] is True
+        assert flags["out_of_state_owner"] is False
+        assert flags["corporate_owner"] is False
         mock_upsert.assert_called_once()
 
     @pytest.mark.asyncio
@@ -236,6 +260,8 @@ class TestSignalEngineProcess:
 
         assert flags["absentee_owner"] is False
         assert flags["long_term_owner"] is False
+        assert flags["out_of_state_owner"] is False
+        assert flags["corporate_owner"] is False
 
     @pytest.mark.asyncio
     async def test_returns_correct_flags_only_absentee(self):
@@ -256,6 +282,8 @@ class TestSignalEngineProcess:
 
         assert flags["absentee_owner"] is True
         assert flags["long_term_owner"] is False
+        assert flags["out_of_state_owner"] is True
+        assert flags["corporate_owner"] is False
 
     @pytest.mark.asyncio
     async def test_returns_correct_flags_only_long_term(self):
@@ -276,6 +304,8 @@ class TestSignalEngineProcess:
 
         assert flags["absentee_owner"] is False
         assert flags["long_term_owner"] is True
+        assert flags["out_of_state_owner"] is False
+        assert flags["corporate_owner"] is False
 
     @pytest.mark.asyncio
     async def test_returns_both_keys_always(self):
@@ -289,6 +319,8 @@ class TestSignalEngineProcess:
 
         assert "absentee_owner" in flags
         assert "long_term_owner" in flags
+        assert "out_of_state_owner" in flags
+        assert "corporate_owner" in flags
 
     @pytest.mark.asyncio
     async def test_upsert_called_with_property_id(self):
@@ -394,6 +426,8 @@ class TestSignalEngineProcessBatch:
         assert counts["processed"] == 10
         assert counts["absentee_owner"] == 5
         assert counts["long_term_owner"] == 0
+        assert counts["out_of_state_owner"] == 5
+        assert counts["corporate_owner"] == 0
 
     @pytest.mark.asyncio
     async def test_empty_batch_returns_zeros(self):
@@ -407,6 +441,8 @@ class TestSignalEngineProcessBatch:
         assert counts["processed"] == 0
         assert counts["absentee_owner"] == 0
         assert counts["long_term_owner"] == 0
+        assert counts["out_of_state_owner"] == 0
+        assert counts["corporate_owner"] == 0
 
     @pytest.mark.asyncio
     async def test_batch_continues_after_single_error(self):
@@ -452,6 +488,7 @@ class TestSignalEngineProcessBatch:
 
         assert counts["long_term_owner"] == 8
         assert counts["absentee_owner"] == 0  # mailing None → not flagged
+        assert counts["out_of_state_owner"] == 0
 
 
 # ── Class registry smoke tests ────────────────────────────────────────────────

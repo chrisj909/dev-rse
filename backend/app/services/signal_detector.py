@@ -12,12 +12,18 @@ Design rules (from BUILD_PLAN):
   - Normalized addresses are used for comparison (never raw).
 """
 from datetime import date
+import re
 from typing import Optional
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 LONG_TERM_OWNER_YEARS: int = 10  # threshold in years
+
+_LEGAL_ENTITY_PATTERN = re.compile(
+    r"\b(LLC|INC|CORP|CORPORATION|LP|LLP|LTD|TRUST|BANK|HOLDINGS?|PROPERTIES|INVESTMENTS?|PARTNERS?)\b"
+)
+_STATE_CODE_AT_END = re.compile(r"\b([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?\s*$")
 
 
 # ── Task 5: Absentee Owner Detection ─────────────────────────────────────────
@@ -101,6 +107,30 @@ def detect_long_term_owner(
     years_held = days_held / 365.25
 
     return years_held > LONG_TERM_OWNER_YEARS
+
+
+def detect_out_of_state_owner(
+    normalized_mailing_address: Optional[str],
+    property_state: Optional[str] = "AL",
+) -> bool:
+    """Flag owners whose mailing address resolves to a different state than the property."""
+    if not normalized_mailing_address:
+        return False
+
+    property_state_code = (property_state or "AL").strip().upper()
+    match = _STATE_CODE_AT_END.search(normalized_mailing_address.strip().upper())
+    if not match:
+        return False
+    mailing_state = match.group(1)
+    return mailing_state != property_state_code
+
+
+def detect_corporate_owner(owner_name: Optional[str]) -> bool:
+    """Flag owner names that look like business entities or trusts."""
+    if not owner_name:
+        return False
+    normalized = re.sub(r"[^A-Z0-9 ]+", " ", owner_name.upper())
+    return bool(_LEGAL_ENTITY_PATTERN.search(normalized))
 
 
 # ── Convenience: detect both signals in one call ──────────────────────────────

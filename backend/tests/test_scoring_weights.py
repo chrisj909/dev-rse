@@ -42,13 +42,15 @@ class TestConstants:
         assert isinstance(SCORING_VERSION, str)
         assert len(SCORING_VERSION) > 0
 
-    def test_scoring_version_is_v2(self):
-        assert SCORING_VERSION == "v2"
+    def test_scoring_version_is_v3(self):
+        assert SCORING_VERSION == "v3"
 
     def test_weights_contains_all_signals(self):
         expected = {
             "absentee_owner",
             "long_term_owner",
+            "out_of_state_owner",
+            "corporate_owner",
             "tax_delinquent",
             "pre_foreclosure",
             "probate",
@@ -59,6 +61,8 @@ class TestConstants:
     def test_weights_match_build_plan(self):
         assert WEIGHTS["absentee_owner"] == 15
         assert WEIGHTS["long_term_owner"] == 10
+        assert WEIGHTS["out_of_state_owner"] == 12
+        assert WEIGHTS["corporate_owner"] == 8
         assert WEIGHTS["tax_delinquent"] == 25
         assert WEIGHTS["pre_foreclosure"] == 30
         assert WEIGHTS["probate"] == 20
@@ -146,6 +150,18 @@ class TestIndividualSignals:
         assert rank == "B"   # 20 is in the B range (10–24); A requires ≥25
         assert reasons == ["probate"]
 
+    def test_out_of_state_owner_only(self):
+        score, rank, reasons = calculate_score({"out_of_state_owner": True})
+        assert score == 12
+        assert rank == "B"
+        assert reasons == ["out_of_state_owner"]
+
+    def test_corporate_owner_only(self):
+        score, rank, reasons = calculate_score({"corporate_owner": True})
+        assert score == 8
+        assert rank == "C"
+        assert reasons == ["corporate_owner"]
+
     def test_code_violation_only(self):
         score, rank, reasons = calculate_score({"code_violation": True})
         assert score == 15
@@ -169,6 +185,15 @@ class TestTwoSignalCombinations:
         assert "absentee_owner" in reasons
         assert "long_term_owner" in reasons
         assert "distress_combo" not in reasons  # non-distress signals — no bonus
+
+    def test_out_of_state_and_corporate(self):
+        score, rank, reasons = calculate_score({
+            "out_of_state_owner": True,
+            "corporate_owner": True,
+        })
+        assert score == 20
+        assert rank == "B"
+        assert "distress_combo" not in reasons
 
     def test_tax_delinquent_and_absentee(self):
         """25 + 15 = 40 → rank A (no combo — only 1 distress signal)."""

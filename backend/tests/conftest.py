@@ -84,6 +84,8 @@ def make_mock_signal(
     property_id: uuid.UUID | None = None,
     absentee_owner: bool = False,
     long_term_owner: bool = False,
+    out_of_state_owner: bool = False,
+    corporate_owner: bool = False,
     tax_delinquent: bool = False,
     pre_foreclosure: bool = False,
     probate: bool = False,
@@ -96,6 +98,8 @@ def make_mock_signal(
     sig.property_id = property_id or uuid.uuid4()
     sig.absentee_owner = absentee_owner
     sig.long_term_owner = long_term_owner
+    sig.out_of_state_owner = out_of_state_owner
+    sig.corporate_owner = corporate_owner
     sig.tax_delinquent = tax_delinquent
     sig.pre_foreclosure = pre_foreclosure
     sig.probate = probate

@@ -14,7 +14,7 @@ Covers:
   - Registration order — signals run in registration order
   - Replacing an existing signal — same name, new function
   - Custom signals are detected and return results via process()
-  - Default registry includes all 6 expected signals
+    - Default registry includes all expected signals
   - Stub signals (tax_delinquent, probate, code_violation, pre_foreclosure) return False
   - process() includes all registered signals in result dict
   - process_batch() counts custom registered signals
@@ -205,14 +205,17 @@ class TestRegisteredSignals:
         names = [n for n, _ in SignalEngine.registered_signals()]
         assert names == ["first", "second", "third"]
 
-    def test_default_registry_has_six_signals(self):
-        """Default registry contains exactly the 6 expected signals."""
+    def test_default_registry_has_expected_signals(self):
+        """Default registry contains the expected implemented and placeholder signals."""
         names = {n for n, _ in SignalEngine.registered_signals()}
         expected = {
             "absentee_owner",
             "long_term_owner",
+            "out_of_state_owner",
+            "corporate_owner",
             "tax_delinquent",
             "probate",
+            "eviction",
             "code_violation",
             "pre_foreclosure",
         }
@@ -228,11 +231,15 @@ class TestRegisteredSignals:
         names = [n for n, _ in SignalEngine.registered_signals()]
         assert names[1] == "long_term_owner"
 
+    def test_out_of_state_owner_is_third(self):
+        names = [n for n, _ in SignalEngine.registered_signals()]
+        assert names[2] == "out_of_state_owner"
+
 
 # ── Stub signal behavior ──────────────────────────────────────────────────────
 
 class TestStubSignals:
-    """Stub signals (tax_delinquent, probate, code_violation, pre_foreclosure) must return False."""
+    """Stub signals (tax_delinquent, probate, eviction, code_violation, pre_foreclosure) must return False."""
 
     @pytest.mark.asyncio
     async def test_tax_delinquent_stub_returns_false(self):
@@ -257,6 +264,17 @@ class TestStubSignals:
             flags = await engine.process(prop, session)
 
         assert flags.get("probate") is False
+
+    @pytest.mark.asyncio
+    async def test_eviction_stub_returns_false(self):
+        prop = _make_prop()
+        session = _make_session()
+
+        with patch.object(SignalEngine, "_upsert_signal", new_callable=AsyncMock):
+            engine = SignalEngine()
+            flags = await engine.process(prop, session)
+
+        assert flags.get("eviction") is False
 
     @pytest.mark.asyncio
     async def test_code_violation_stub_returns_false(self):
