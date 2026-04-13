@@ -55,6 +55,25 @@ Practical rule:
   - `DATABASE_SYNC_URL`
 - current known good Alembic verification from Codespaces used the pooler host for both URLs
 
+If a future session needs to apply revision `0003` manually in the Supabase SQL editor, paste SQL like this rather than the Alembic `.py` file:
+
+```sql
+alter table public.signals
+add column if not exists out_of_state_owner boolean not null default false;
+
+alter table public.signals
+add column if not exists corporate_owner boolean not null default false;
+
+update public.alembic_version
+set version_num = '0003'
+where version_num = '0002';
+```
+
+Important:
+
+- do not paste the contents of `backend/alembic/versions/0003_add_cross_county_signals.py` into the SQL editor; that file is Python, not SQL
+- if the schema is updated manually, `alembic_version` must also be updated or Alembic will still think `0003` is pending later
+
 ## 6. Scheduler Notes
 
 - cron endpoint: `/api/cron/run-signals`

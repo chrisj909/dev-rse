@@ -471,6 +471,22 @@ python main.py
 
 Important: `alembic upgrade head` is a shell command run from your terminal in `backend/`. It is not SQL and will fail if you paste it into the Supabase SQL editor.
 
+If you need to apply revision `0003` manually in the Supabase SQL editor, paste this SQL instead of the Alembic Python migration file:
+
+```sql
+alter table public.signals
+add column if not exists out_of_state_owner boolean not null default false;
+
+alter table public.signals
+add column if not exists corporate_owner boolean not null default false;
+
+update public.alembic_version
+set version_num = '0003'
+where version_num = '0002';
+```
+
+That manual SQL is equivalent to the migration in `backend/alembic/versions/0003_add_cross_county_signals.py` plus the version-table update Alembic would normally manage for you.
+
 FastAPI docs will be available at `http://127.0.0.1:8000/docs`.
 
 ### 12.4 Frontend
