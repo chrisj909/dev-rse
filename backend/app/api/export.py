@@ -37,6 +37,7 @@ from app.models.crm import (
 from app.models.property import Property
 from app.models.score import Score
 from app.models.signal import Signal
+from app.scoring.weights import DEFAULT_SCORING_MODE, get_scoring_mode
 
 router = APIRouter(tags=["export"])
 
@@ -84,6 +85,7 @@ def _build_crm_lead(
         score=ScoreExport(
             value=score.score,
             rank=score.rank,
+            mode=score.scoring_mode,
             version=score.scoring_version,
         ),
         tags=list(score.reason) if score.reason else [],
@@ -127,6 +129,7 @@ async def export_leads(
         default="json",
         description="Response format — 'json' only for now.",
     ),
+    scoring_mode: str = Query(default=DEFAULT_SCORING_MODE, description="Scoring lens: broad, owner_occupant, or investor."),
     session: AsyncSession = Depends(get_db),
 ) -> CRMExportResponse:
     """
@@ -157,12 +160,15 @@ async def export_leads(
             detail=f"Invalid rank '{rank}'. Must be one of: A, B, C.",
         )
 
+    scoring_mode = _coerce_scoring_mode(scoring_mode)
+
     conditions = _build_export_conditions(min_score, rank)
 
     data_stmt = (
         select(Property, Signal, Score)
         .join(Signal, Signal.property_id == Property.id)
         .join(Score, Score.property_id == Property.id)
+        .where(Score.scoring_mode == scoring_mode)
         .order_by(Score.score.desc())
         .limit(limit)
     )
@@ -176,6 +182,7 @@ async def export_leads(
         select(func.count(Property.id))
         .join(Signal, Signal.property_id == Property.id)
         .join(Score, Score.property_id == Property.id)
+        .where(Score.scoring_mode == scoring_mode)
     )
     if conditions:
         count_stmt = count_stmt.where(*conditions)
@@ -194,6 +201,7 @@ async def export_leads(
 @router.get("/leads/export/{property_id}", response_model=CRMLeadExport)
 async def export_lead_by_id(
     property_id: str,
+    scoring_mode: str = Query(default=DEFAULT_SCORING_MODE, description="Scoring lens: broad, owner_occupant, or investor."),
     session: AsyncSession = Depends(get_db),
 ) -> CRMLeadExport:
     """
@@ -211,10 +219,13 @@ async def export_lead_by_id(
             detail="Invalid property ID — must be a valid UUID.",
         )
 
+    scoring_mode = _coerce_scoring_mode(scoring_mode)
+
     stmt = (
         select(Property, Signal, Score)
         .join(Signal, Signal.property_id == Property.id)
         .join(Score, Score.property_id == Property.id)
+        .where(Score.scoring_mode == scoring_mode)
         .where(Property.id == prop_uuid)
     )
 
@@ -227,3 +238,7 @@ async def export_lead_by_id(
     prop, signal, score = row
     now = datetime.now(tz=timezone.utc)
     return _build_crm_lead(prop, signal, score, now)
+
+
+def _coerce_scoring_mode(value: object) -> str:
+    return get_scoring_mode(str(value or DEFAULT_SCORING_MODE)).slug

@@ -252,6 +252,14 @@ class TestGetTopLeadsWithData:
         lead = test_client.get("/api/leads/top").json()["leads"][0]
         assert lead["rank"] == "B"
 
+    def test_lead_has_scoring_mode(self, test_client, mock_session):
+        prop = make_mock_property()
+        sig = make_mock_signal()
+        sc = make_mock_score(scoring_mode="investor")
+        _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
+        lead = test_client.get("/api/leads/top?scoring_mode=investor").json()["leads"][0]
+        assert lead["scoring_mode"] == "investor"
+
     def test_lead_has_signals_list(self, test_client, mock_session):
         prop = make_mock_property()
         sig = make_mock_signal()
@@ -510,6 +518,16 @@ class TestGetTopLeadsFiltering:
             "/api/leads/top?min_score=15&absentee_owner=true&long_term_owner=true&city=HOOVER"
         )
         assert resp.status_code == 200
+
+    def test_scoring_mode_accepted(self, test_client, mock_session):
+        self._empty(mock_session)
+        resp = test_client.get("/api/leads/top?scoring_mode=owner_occupant")
+        assert resp.status_code == 200
+
+    def test_invalid_scoring_mode_returns_422(self, test_client, mock_session):
+        self._empty(mock_session)
+        resp = test_client.get("/api/leads/top?scoring_mode=badmode")
+        assert resp.status_code == 422
 
     def test_min_score_negative_rejected(self, test_client, mock_session):
         resp = test_client.get("/api/leads/top?min_score=-1")
@@ -1011,6 +1029,11 @@ class TestGetPropertyDetailScore:
         data = test_client.get(f"/api/property/{prop.id}").json()
         assert data["score"]["scoring_version"] == "v1"
 
+    def test_score_mode_preserved(self, test_client, mock_session):
+        prop = self._setup_with_score(mock_session, scoring_mode="owner_occupant")
+        data = test_client.get(f"/api/property/{prop.id}?scoring_mode=owner_occupant").json()
+        assert data["score"]["scoring_mode"] == "owner_occupant"
+
     def test_score_last_updated_present(self, test_client, mock_session):
         prop = self._setup_with_score(mock_session)
         data = test_client.get(f"/api/property/{prop.id}").json()
@@ -1019,5 +1042,5 @@ class TestGetPropertyDetailScore:
     def test_score_has_all_required_fields(self, test_client, mock_session):
         prop = self._setup_with_score(mock_session)
         data = test_client.get(f"/api/property/{prop.id}").json()
-        required = {"score", "rank", "reason", "scoring_version", "last_updated"}
+        required = {"score", "rank", "reason", "scoring_mode", "scoring_version", "last_updated"}
         assert required.issubset(data["score"].keys())

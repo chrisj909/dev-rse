@@ -86,7 +86,7 @@ def make_signals_export(**overrides) -> SignalsExport:
 
 
 def make_score_export(**overrides) -> ScoreExport:
-    defaults = dict(value=35, rank="A", version="v2")
+    defaults = dict(value=35, rank="A", mode="broad", version="v2")
     defaults.update(overrides)
     return ScoreExport(**defaults)
 
@@ -228,6 +228,7 @@ class TestScoreExport:
         sc = ScoreExport(value=35, rank="A", version="v2")
         assert sc.value == 35
         assert sc.rank == "A"
+        assert sc.mode == "broad"
         assert sc.version == "v2"
 
     def test_rank_b(self):
@@ -245,7 +246,7 @@ class TestScoreExport:
     def test_model_dump_keys(self):
         sc = ScoreExport(value=25, rank="A", version="v2")
         d = sc.model_dump()
-        assert set(d.keys()) == {"value", "rank", "version"}
+        assert set(d.keys()) == {"value", "rank", "mode", "version"}
 
     def test_version_string_preserved(self):
         sc = ScoreExport(value=30, rank="A", version="v2")

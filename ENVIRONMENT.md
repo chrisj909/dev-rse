@@ -74,6 +74,34 @@ Important:
 - do not paste the contents of `backend/alembic/versions/0003_add_cross_county_signals.py` into the SQL editor; that file is Python, not SQL
 - if the schema is updated manually, `alembic_version` must also be updated or Alembic will still think `0003` is pending later
 
+If a future session needs to apply revision `0004` manually in the Supabase SQL editor, paste SQL like this rather than the Alembic `.py` file:
+
+```sql
+alter table public.scores
+add column if not exists scoring_mode varchar(32) not null default 'broad';
+
+update public.scores
+set scoring_mode = 'broad'
+where scoring_mode is null;
+
+alter table public.scores
+drop constraint if exists uq_scores_property_id;
+
+alter table public.scores
+add constraint uq_scores_property_mode unique (property_id, scoring_mode);
+
+create index if not exists ix_scores_scoring_mode on public.scores (scoring_mode);
+
+update public.alembic_version
+set version_num = '0004'
+where version_num = '0003';
+```
+
+Important:
+
+- do not paste the contents of `backend/alembic/versions/0004_add_scoring_mode_to_scores.py` into the SQL editor; that file is Python, not SQL
+- after `0004`, scores are stored per `(property_id, scoring_mode)` rather than one score per property
+
 ## 6. Scheduler Notes
 
 - cron endpoint: `/api/cron/run-signals`

@@ -214,12 +214,23 @@ Important fields:
 - `score`
 - `rank`
 - `reason`
+- `scoring_mode`
 - `scoring_version`
 - `last_updated`
 
 ## 8. Scoring Design
 
-Current scoring weights are defined in `backend/app/scoring/weights.py`.
+Current scoring lenses are defined in `backend/app/scoring/weights.py`.
+
+Signals remain universal property facts. Scores are now stored and read per scoring lens.
+
+Current scoring modes:
+
+- `broad` — blended opportunity ranking across seller and investor use cases; default mode for backward compatibility
+- `owner_occupant` — prioritizes homeowner-style distress and long tenure while de-emphasizing investor ownership patterns
+- `investor` — prioritizes absentee, out-of-state, and portfolio-style ownership alongside distress
+
+Representative `broad` mode weights:
 
 | Signal | Weight |
 | --- | --- |
@@ -244,11 +255,11 @@ Where:
 - `distress_combo_bonus = 20`
 - the bonus is added only when `2` or more distress signals are active
 
-Current rank thresholds:
+Rank thresholds are mode-specific. Current thresholds are:
 
-- Rank A: score >= 25
-- Rank B: score >= 10 and < 25
-- Rank C: score < 10
+- `broad`: A >= 25, B >= 10, C < 10
+- `owner_occupant`: A >= 30, B >= 12, C < 12
+- `investor`: A >= 28, B >= 12, C < 12
 
 ### 8.2 Implemented vs Placeholder Signals
 
@@ -282,6 +293,8 @@ Present in the model but still placeholder-stubbed in the signal engine:
 This matters because the scoring model is broader than the live input coverage. Rank math is already in place for distress-heavy cases, but most current production records are still driven by ownership and tax-overlay signals rather than a full distress stack.
 
 ### 8.3 Practical Scoring Examples
+
+Examples below use the default `broad` mode unless noted otherwise.
 
 | Active signals | Score | Rank |
 | --- | --- | --- |
@@ -350,6 +363,7 @@ Lead list behavior:
 - default `limit=50`
 - max `limit=250`
 - optional `county` filter for `shelby` or `jefferson`
+- optional `scoring_mode` filter for `broad`, `owner_occupant`, or `investor`
 - response includes both `leads` and `total`
 
 `GET /api/leads/new` remains a separate recent-leads path with a higher cap.
@@ -368,6 +382,8 @@ Export payloads now include `property.county` so downstream systems can safely d
 ### 10.1 Dashboard
 
 The dashboard uses the API `total` field for the headline property count and renders a top-five score view from the current lead slice across Shelby and Jefferson counties.
+
+The dashboard, leads page, and property detail now preserve a selected scoring lens through the `scoring_mode` query parameter.
 
 ### 10.2 Leads Page
 
@@ -486,6 +502,31 @@ where version_num = '0002';
 ```
 
 That manual SQL is equivalent to the migration in `backend/alembic/versions/0003_add_cross_county_signals.py` plus the version-table update Alembic would normally manage for you.
+
+If you need to apply revision `0004` manually in the Supabase SQL editor, paste this SQL instead of the Alembic Python migration file:
+
+```sql
+alter table public.scores
+add column if not exists scoring_mode varchar(32) not null default 'broad';
+
+update public.scores
+set scoring_mode = 'broad'
+where scoring_mode is null;
+
+alter table public.scores
+drop constraint if exists uq_scores_property_id;
+
+alter table public.scores
+add constraint uq_scores_property_mode unique (property_id, scoring_mode);
+
+create index if not exists ix_scores_scoring_mode on public.scores (scoring_mode);
+
+update public.alembic_version
+set version_num = '0004'
+where version_num = '0003';
+```
+
+That manual SQL is equivalent to the migration in `backend/alembic/versions/0004_add_scoring_mode_to_scores.py` plus the version-table update Alembic would normally manage for you.
 
 FastAPI docs will be available at `http://127.0.0.1:8000/docs`.
 

@@ -29,7 +29,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 import pytest
 
 from app.scoring.engine import ScoringEngine
-from app.scoring.weights import SCORING_VERSION, WEIGHTS
+from app.scoring.weights import DEFAULT_SCORING_MODE, SCORING_MODES, SCORING_VERSION, WEIGHTS
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -99,6 +99,14 @@ class TestScoringEngineConstructor:
     def test_custom_scoring_version(self):
         engine = ScoringEngine(scoring_version="v2-test")
         assert engine._scoring_version == "v2-test"
+
+    def test_default_scoring_mode(self):
+        engine = ScoringEngine()
+        assert engine._scoring_mode == DEFAULT_SCORING_MODE
+
+    def test_custom_scoring_mode(self):
+        engine = ScoringEngine(scoring_mode="investor")
+        assert engine._scoring_mode == "investor"
 
 
 # ── ScoringEngine.score() — single property ───────────────────────────────────
@@ -330,6 +338,36 @@ class TestScoringEngineScore:
 
         assert result["score"] == 20
         assert result["rank"] == "B"
+
+    @pytest.mark.asyncio
+    async def test_owner_occupant_mode_changes_weights(self):
+        prop = make_property()
+        signal_row = make_signal_row(corporate_owner=True, long_term_owner=True)
+        session = make_session(signal_row=signal_row)
+
+        engine = ScoringEngine(scoring_mode="owner_occupant")
+        with patch.object(engine, "_upsert_score", new_callable=AsyncMock):
+            result = await engine.score(prop, session)
+
+        assert result["score"] == 18
+        assert result["rank"] == "B"
+        assert result["scoring_mode"] == "owner_occupant"
+
+
+class TestScoringEngineAllModes:
+
+    @pytest.mark.asyncio
+    async def test_score_all_modes_batch_returns_each_mode(self):
+        prop = make_property()
+        session = AsyncMock()
+
+        async def fake_score_batch(self, properties, _session):
+            return {"processed": len(properties), "rank_a": 0, "rank_b": 1, "rank_c": 0, "errors": 0}
+
+        with patch.object(ScoringEngine, "score_batch", new=fake_score_batch):
+            result = await ScoringEngine.score_all_modes_batch([prop], session)
+
+        assert set(result.keys()) == set(SCORING_MODES.keys())
 
 
 # ── ScoringEngine.score_batch() ───────────────────────────────────────────────

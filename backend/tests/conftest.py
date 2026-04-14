@@ -114,6 +114,7 @@ def make_mock_score(
     score: int = 25,
     rank: str = "A",
     reason: list[str] | None = None,
+    scoring_mode: str = "broad",
     scoring_version: str = "v2",
     last_updated: datetime | None = None,
 ) -> MagicMock:
@@ -124,6 +125,7 @@ def make_mock_score(
     sc.score = score
     sc.rank = rank
     sc.reason = reason if reason is not None else ["absentee_owner", "long_term_owner"]
+    sc.scoring_mode = scoring_mode
     sc.scoring_version = scoring_version
     sc.last_updated = last_updated or datetime(2026, 3, 28, tzinfo=timezone.utc)
     return sc

@@ -43,6 +43,7 @@ class LeadResponse(BaseModel):
     assessed_value: Optional[float] = None
     score: int
     rank: str                    # "A" | "B" | "C"
+    scoring_mode: str = "broad"
     signals: list[str]           # active signal names only
     signal_count: int = 0
     last_updated: datetime
@@ -86,6 +87,7 @@ class ScoreDetail(BaseModel):
     score: int
     rank: str                    # "A" | "B" | "C"
     reason: list[str]            # active signal tags that contributed
+    scoring_mode: str = "broad"
     scoring_version: str
     last_updated: datetime
 

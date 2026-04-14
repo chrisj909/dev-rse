@@ -29,7 +29,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.property import Property
 from app.models.score import Score
 from app.models.signal import Signal
-from app.scoring.weights import SCORING_VERSION, calculate_score
+from app.scoring.weights import (
+    DEFAULT_SCORING_MODE,
+    SCORING_MODES,
+    SCORING_VERSION,
+    calculate_score_for_mode,
+    get_scoring_mode,
+)
 
 log = logging.getLogger("rse.scoring_engine")
 
@@ -60,13 +66,18 @@ class ScoringEngine:
         # {"processed": 50, "rank_a": 10, "rank_b": 20, "rank_c": 20, "errors": 0}
     """
 
-    def __init__(self, scoring_version: str = SCORING_VERSION) -> None:
+    def __init__(
+        self,
+        scoring_version: str = SCORING_VERSION,
+        scoring_mode: str = DEFAULT_SCORING_MODE,
+    ) -> None:
         """
         Args:
             scoring_version: Weight version string stored on every score row.
                              Defaults to the current module-level SCORING_VERSION.
         """
         self._scoring_version = scoring_version
+        self._scoring_mode = get_scoring_mode(scoring_mode).slug
 
     # ── Single-property scoring ───────────────────────────────────────────────
 
@@ -109,21 +120,27 @@ class ScoringEngine:
         else:
             flags = {col: getattr(signal_row, col, False) for col in _SIGNAL_COLUMNS}
 
-        score_val, rank, reasons = calculate_score(flags)
+        score_val, rank, reasons = calculate_score_for_mode(flags, mode=self._scoring_mode)
 
         await self._upsert_score(session, prop.id, score_val, rank, reasons)
 
         log.debug(
-            "property=%s parcel=%s score=%d rank=%s reasons=%s version=%s",
+            "property=%s parcel=%s mode=%s score=%d rank=%s reasons=%s version=%s",
             prop.id,
             getattr(prop, "parcel_id", "?"),
+            self._scoring_mode,
             score_val,
             rank,
             reasons,
             self._scoring_version,
         )
 
-        return {"score": score_val, "rank": rank, "reasons": reasons}
+        return {
+            "score": score_val,
+            "rank": rank,
+            "reasons": reasons,
+            "scoring_mode": self._scoring_mode,
+        }
 
     # ── Batch scoring ─────────────────────────────────────────────────────────
 
@@ -178,6 +195,20 @@ class ScoringEngine:
 
         return counts
 
+    @classmethod
+    async def score_all_modes_batch(
+        cls,
+        properties: Sequence[Property],
+        session: AsyncSession,
+        scoring_version: str = SCORING_VERSION,
+    ) -> dict[str, dict[str, int]]:
+        """Score a property set for every configured scoring mode."""
+        results: dict[str, dict[str, int]] = {}
+        for mode in SCORING_MODES:
+            engine = cls(scoring_version=scoring_version, scoring_mode=mode)
+            results[mode] = await engine.score_batch(properties, session)
+        return results
+
     # ── DB helpers ────────────────────────────────────────────────────────────
 
     async def _upsert_score(
@@ -204,6 +235,7 @@ class ScoringEngine:
             .values(
                 id=new_id,
                 property_id=property_id,
+                scoring_mode=self._scoring_mode,
                 score=score,
                 rank=rank,
                 reason=reasons,
@@ -211,7 +243,7 @@ class ScoringEngine:
                 last_updated=now,
             )
             .on_conflict_do_update(
-                index_elements=["property_id"],
+                index_elements=["property_id", "scoring_mode"],
                 set_={
                     "score": score,
                     "rank": rank,

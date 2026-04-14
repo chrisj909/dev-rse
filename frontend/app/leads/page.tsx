@@ -1,6 +1,7 @@
 import LeadsTable from '../../components/LeadsTable';
 
 import { getServerApiBaseUrl } from '../../lib/server-api';
+import { DEFAULT_SCORING_MODE, getScoringModeLabel, normalizeScoringMode } from '../../lib/scoringModes';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,7 @@ interface Lead {
   assessed_value: number | null;
   score: number;
   rank: string;
+  scoring_mode: string;
   signal_count: number;
   signals: string[];
   last_updated: string;
@@ -40,6 +42,7 @@ type LeadsPageSearchParams = {
   min_value?: string;
   max_value?: string;
   rank?: string;
+  scoring_mode?: string;
   sort_by?: string;
   sort_dir?: string;
 };
@@ -63,6 +66,7 @@ function buildLeadsQuery(searchParams: LeadsPageSearchParams) {
     'min_value',
     'max_value',
     'rank',
+    'scoring_mode',
     'sort_by',
     'sort_dir',
   ];
@@ -105,6 +109,7 @@ export default async function LeadsPage({
 }) {
   const resolvedSearchParams = await searchParams;
   const { leads, total, limit, offset } = await getLeads(resolvedSearchParams);
+  const scoringMode = normalizeScoringMode(resolvedSearchParams.scoring_mode);
 
   return (
     <div className="p-6 space-y-6">
@@ -114,6 +119,7 @@ export default async function LeadsPage({
           <p className="text-slate-500 text-sm mt-1">
             {total > 0 ? `${total} properties scored across Shelby and Jefferson counties` : 'No leads yet'}
           </p>
+          <p className="text-slate-400 text-xs mt-1">Scoring lens: {getScoringModeLabel(scoringMode)}</p>
         </div>
       </div>
       <LeadsTable leads={leads} total={total} pageSize={limit} offset={offset} initialFilters={resolvedSearchParams} />

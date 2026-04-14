@@ -9,6 +9,7 @@ from app.db.session import get_session
 from app.core.config import settings
 from app.models.property import Property
 from app.scoring.engine import ScoringEngine
+from app.scoring.weights import DEFAULT_SCORING_MODE
 from app.signals.engine import SignalEngine
 
 router = APIRouter()
@@ -35,10 +36,10 @@ async def run_signals_cron(
     properties = result.scalars().all()
 
     signal_engine = SignalEngine()
-    scoring_engine = ScoringEngine()
-
     signal_counts = await signal_engine.process_batch(properties, session)
-    scoring_counts = await scoring_engine.score_batch(properties, session)
+    scoring_modes = await ScoringEngine.score_all_modes_batch(properties, session)
+    scoring_counts = dict(scoring_modes.get(DEFAULT_SCORING_MODE, {}))
+    scoring_counts["modes"] = scoring_modes
     await session.commit()
     elapsed = round(time.time() - start, 2)
 

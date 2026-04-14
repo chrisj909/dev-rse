@@ -66,7 +66,7 @@ _SIGNALS_KEYS = {
     "pre_foreclosure", "probate", "eviction", "code_violation",
 }
 
-_SCORE_KEYS = {"value", "rank", "version"}
+_SCORE_KEYS = {"value", "rank", "mode", "version"}
 
 _LEAD_KEYS = {"property", "signals", "score", "tags", "exported_at"}
 
@@ -150,6 +150,12 @@ class TestExportLeads:
         lead = test_client.get("/api/leads/export").json()["leads"][0]
         assert "version" in lead["score"]
         assert "scoring_version" not in lead["score"]
+
+    def test_score_mode_field_present(self, test_client: TestClient, mock_session: AsyncMock):
+        score = make_mock_score(scoring_mode="investor")
+        _mock_execute_pair(mock_session, rows=[_mock_row(score=score)], total=1)
+        lead = test_client.get("/api/leads/export?scoring_mode=investor").json()["leads"][0]
+        assert lead["score"]["mode"] == "investor"
 
     def test_score_value_correct(self, test_client: TestClient, mock_session: AsyncMock):
         score = make_mock_score(score=42, rank="A", reason=["absentee_owner"])

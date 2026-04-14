@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.db.session import get_session
 from app.models.property import Property
 from app.scoring.engine import ScoringEngine
+from app.scoring.weights import DEFAULT_SCORING_MODE
 from app.scrapers import run_all_scrapers, run_delinquent_only
 from app.signals.engine import SignalEngine
 from app.services.tax_delinquency import TaxDelinquencyService
@@ -107,7 +108,6 @@ async def run_ingest(
     await session.commit()
 
     signal_engine = SignalEngine()
-    scoring_engine = ScoringEngine()
     tax_service = TaxDelinquencyService()
     tax_delinquency_by_parcel = {
         rec.get("parcel_id"): bool(rec.get("is_tax_delinquent", False))
@@ -134,7 +134,9 @@ async def run_ingest(
             for prop in properties
         ]
         tax_result = await tax_service.ingest_batch(tax_records, session)
-        score_result = await scoring_engine.score_batch(properties, session)
+        scoring_modes = await ScoringEngine.score_all_modes_batch(properties, session)
+        score_result = dict(scoring_modes.get(DEFAULT_SCORING_MODE, {}))
+        score_result["modes"] = scoring_modes
         await session.commit()
     except Exception as e:
         await session.rollback()

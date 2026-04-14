@@ -2,6 +2,8 @@
 import { type FormEvent, useState, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
+import { DEFAULT_SCORING_MODE, SCORING_MODES, getScoringModeLabel } from '../lib/scoringModes';
+
 interface Lead {
   county: string;
   parcel_id: string;
@@ -11,6 +13,7 @@ interface Lead {
   assessed_value: number | null;
   score: number;
   rank: string;
+  scoring_mode?: string;
   signal_count: number;
   last_updated: string;
 }
@@ -26,6 +29,7 @@ interface FilterState {
   min_value?: string;
   max_value?: string;
   rank?: string;
+  scoring_mode?: string;
   sort_by?: string;
   sort_dir?: string;
   page?: string;
@@ -85,6 +89,7 @@ export default function LeadsTable({
   const [minValue, setMinValue] = useState(initialFilters.min_value ?? '');
   const [maxValue, setMaxValue] = useState(initialFilters.max_value ?? '');
   const [rankFilter, setRankFilter] = useState<string>(initialFilters.rank ?? 'All');
+  const [scoringMode, setScoringMode] = useState(initialFilters.scoring_mode ?? DEFAULT_SCORING_MODE);
   const [sortKey, setSortKey] = useState<SortKey>((initialFilters.sort_by as SortKey) ?? 'score');
   const [sortDir, setSortDir] = useState<SortDir>((initialFilters.sort_dir as SortDir) ?? 'desc');
 
@@ -189,6 +194,7 @@ export default function LeadsTable({
       min_value: minValue,
       max_value: maxValue,
       rank: rankFilter,
+      scoring_mode: scoringMode,
       sort_by: sortKey,
       sort_dir: sortDir,
       page: '1',
@@ -220,6 +226,9 @@ export default function LeadsTable({
             <div className="rounded-full border border-gray-600 bg-gray-700/80 px-3 py-1 text-xs font-medium text-gray-300">
               {activeFilterCount} active filters
             </div>
+            <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-200">
+              {getScoringModeLabel(scoringMode)}
+            </div>
             <button
               type="submit"
               disabled={isPending}
@@ -238,6 +247,19 @@ export default function LeadsTable({
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="block">
+            <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-400">Scoring Lens</span>
+            <select
+              value={scoringMode}
+              onChange={e => setScoringMode(e.target.value)}
+              className="w-full rounded-xl border border-gray-600 bg-gray-900/80 px-4 py-2.5 text-sm text-white focus:border-blue-500 focus:outline-none"
+            >
+              {SCORING_MODES.map(mode => (
+                <option key={mode.value} value={mode.value}>{mode.label}</option>
+              ))}
+            </select>
+          </label>
+
           <label className="block">
             <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-400">County</span>
             <select
@@ -402,7 +424,16 @@ export default function LeadsTable({
               leads.map(lead => (
                 <tr
                   key={`${lead.county}:${lead.parcel_id}`}
-                  onClick={() => router.push(`/property?parcel_id=${encodeURIComponent(lead.parcel_id)}&county=${encodeURIComponent(lead.county)}`)}
+                  onClick={() => {
+                    const params = new URLSearchParams({
+                      parcel_id: lead.parcel_id,
+                      county: lead.county,
+                    });
+                    if (scoringMode !== DEFAULT_SCORING_MODE) {
+                      params.set('scoring_mode', scoringMode);
+                    }
+                    router.push(`/property?${params.toString()}`);
+                  }}
                   className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
                   <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>

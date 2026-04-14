@@ -47,6 +47,7 @@ from app.models.crm import CRMLeadExport, PropertyExport, ScoreExport, SignalsEx
 from app.models.property import Property
 from app.models.score import Score
 from app.models.signal import Signal
+from app.scoring.weights import DEFAULT_SCORING_MODE, SCORING_MODES, get_scoring_mode
 from app.services.webhook import WebhookService
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ _DEFAULT_RANKS = {"A", "B"}
 async def _load_leads(
     threshold: int,
     ranks: set[str],
+    scoring_mode: str,
 ) -> list[CRMLeadExport]:
     """
     Query the database for leads at or above `threshold` and in `ranks`.
@@ -80,6 +82,7 @@ async def _load_leads(
             select(Property, Signal, Score)
             .join(Signal, Signal.property_id == Property.id)
             .join(Score, Score.property_id == Property.id)
+            .where(Score.scoring_mode == scoring_mode)
             .where(Score.score >= threshold)
             .where(Score.rank.in_(list(ranks)))
             .order_by(Score.score.desc())
@@ -117,6 +120,7 @@ async def _load_leads(
                 score=ScoreExport(
                     value=score.score,
                     rank=score.rank,
+                    mode=score.scoring_mode,
                     version=score.scoring_version,
                 ),
                 tags=list(score.reason) if score.reason else [],
@@ -169,6 +173,12 @@ def _parse_args() -> argparse.Namespace:
         choices=["A", "B", "C"],
         help="Restrict to a single rank band. Defaults to A and B.",
     )
+    parser.add_argument(
+        "--scoring-mode",
+        default=DEFAULT_SCORING_MODE,
+        choices=list(SCORING_MODES.keys()),
+        help="Scoring mode to use when selecting leads.",
+    )
     return parser.parse_args()
 
 
@@ -184,6 +194,7 @@ async def _main() -> int:
     threshold = args.threshold if args.threshold is not None else settings.webhook_score_threshold
     webhook_url = args.webhook_url or settings.webhook_url
     ranks = {args.rank} if args.rank else _DEFAULT_RANKS
+    scoring_mode = get_scoring_mode(args.scoring_mode).slug
 
     # Validate configuration
     if not args.dry_run and not webhook_url:
@@ -193,14 +204,15 @@ async def _main() -> int:
         return 2
 
     logger.info(
-        "Loading leads — threshold=%d  ranks=%s  dry_run=%s",
+        "Loading leads — threshold=%d  ranks=%s  scoring_mode=%s  dry_run=%s",
         threshold,
         sorted(ranks),
+        scoring_mode,
         args.dry_run,
     )
 
     try:
-        leads = await _load_leads(threshold=threshold, ranks=ranks)
+        leads = await _load_leads(threshold=threshold, ranks=ranks, scoring_mode=scoring_mode)
     except Exception as exc:
         logger.error("Failed to load leads from database: %s", exc)
         return 2

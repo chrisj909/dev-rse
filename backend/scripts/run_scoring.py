@@ -41,7 +41,12 @@ from app.db.session import AsyncSessionLocal  # noqa: E402
 from app.models.property import Property  # noqa: E402
 from app.models.signal import Signal  # noqa: E402
 from app.scoring.engine import ScoringEngine  # noqa: E402
-from app.scoring.weights import SCORING_VERSION, calculate_score  # noqa: E402
+from app.scoring.weights import (  # noqa: E402
+    DEFAULT_SCORING_MODE,
+    SCORING_MODES,
+    SCORING_VERSION,
+    calculate_score_for_mode,
+)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 DEFAULT_BATCH_SIZE = 500
@@ -104,7 +109,7 @@ async def run_scoring(batch_size: int, dry_run: bool) -> dict:
           }
     """
     log = logging.getLogger("rse.run_scoring")
-    engine = ScoringEngine(scoring_version=SCORING_VERSION)
+    engine = ScoringEngine(scoring_version=SCORING_VERSION, scoring_mode=DEFAULT_SCORING_MODE)
 
     summary: dict[str, int] = {
         "total_properties": 0,
@@ -141,6 +146,8 @@ async def run_scoring(batch_size: int, dry_run: bool) -> dict:
                         flags = {
                             "absentee_owner":  signal_row.absentee_owner,
                             "long_term_owner": signal_row.long_term_owner,
+                            "out_of_state_owner": signal_row.out_of_state_owner,
+                            "corporate_owner": signal_row.corporate_owner,
                             "tax_delinquent":  signal_row.tax_delinquent,
                             "pre_foreclosure": signal_row.pre_foreclosure,
                             "probate":         signal_row.probate,
@@ -149,16 +156,19 @@ async def run_scoring(batch_size: int, dry_run: bool) -> dict:
                     else:
                         flags = {}
 
-                    score_val, rank, reasons = calculate_score(flags)
-                    log.debug(
-                        "[DRY RUN] parcel=%-20s score=%3d rank=%s reasons=%s",
-                        getattr(prop, "parcel_id", "?"),
-                        score_val,
-                        rank,
-                        reasons,
-                    )
-                    summary["processed"] += 1
-                    summary[f"rank_{rank.lower()}"] += 1
+                    for mode in SCORING_MODES:
+                        score_val, rank, reasons = calculate_score_for_mode(flags, mode=mode)
+                        log.debug(
+                            "[DRY RUN] mode=%s parcel=%-20s score=%3d rank=%s reasons=%s",
+                            mode,
+                            getattr(prop, "parcel_id", "?"),
+                            score_val,
+                            rank,
+                            reasons,
+                        )
+                        if mode == DEFAULT_SCORING_MODE:
+                            summary["processed"] += 1
+                            summary[f"rank_{rank.lower()}"] += 1
                 except Exception as exc:  # noqa: BLE001
                     log.error("[DRY RUN] Failed to compute score for %s: %s", prop.id, exc)
                     summary["errors"] += 1
@@ -184,8 +194,9 @@ async def run_scoring(batch_size: int, dry_run: bool) -> dict:
             )
 
             try:
-                counts = await engine.score_batch(batch, session)
+                mode_counts = await ScoringEngine.score_all_modes_batch(batch, session)
                 await session.commit()
+                counts = mode_counts.get(DEFAULT_SCORING_MODE, {"processed": 0, "errors": 0, "rank_a": 0, "rank_b": 0, "rank_c": 0})
 
                 summary["processed"] += counts["processed"]
                 summary["errors"] += counts.get("errors", 0)

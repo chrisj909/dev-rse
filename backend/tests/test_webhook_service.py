@@ -84,7 +84,7 @@ def make_lead(score: int = 35, rank: str = "A", parcel_id: str = "SC-0001") -> C
             updated_at=datetime(2024, 6, 1, tzinfo=timezone.utc),
         ),
         signals=SignalsExport(absentee_owner=True, long_term_owner=True),
-        score=ScoreExport(value=score, rank=rank, version="v2"),
+        score=ScoreExport(value=score, rank=rank, mode="broad", version="v2"),
         tags=["absentee_owner", "long_term_owner"],
         exported_at=datetime(2026, 4, 3, 12, 0, tzinfo=timezone.utc),
     )

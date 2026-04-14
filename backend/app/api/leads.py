@@ -40,6 +40,7 @@ from app.models.responses import (
 )
 from app.models.score import Score
 from app.models.signal import Signal
+from app.scoring.weights import DEFAULT_SCORING_MODE, get_scoring_mode
 
 router = APIRouter(tags=["leads"])
 log = logging.getLogger("rse.api.leads")
@@ -94,6 +95,7 @@ def _build_lead(prop: Property, signal: Signal, score: Score) -> LeadResponse:
         assessed_value=_coerce_float(getattr(prop, "assessed_value", None)),
         score=_coerce_int(getattr(score, "score", None), default=0),
         rank=_coerce_rank(getattr(score, "rank", None)),
+        scoring_mode=_coerce_scoring_mode(getattr(score, "scoring_mode", None)),
         signals=active_signals,
         signal_count=len(active_signals),
         last_updated=_coerce_datetime(getattr(score, "last_updated", None)),
@@ -119,6 +121,7 @@ async def get_top_leads(
     max_value: Optional[float] = Query(default=None, ge=0, description="Maximum assessed value (inclusive)."),
     sort_by: str = Query(default="score", description="Sort field: score, assessed_value, last_updated, address, city, county."),
     sort_dir: str = Query(default="desc", description="Sort direction: asc or desc."),
+    scoring_mode: str = Query(default=DEFAULT_SCORING_MODE, description="Scoring lens: broad, owner_occupant, or investor."),
     limit: int = Query(default=50, ge=1, le=250, description="Max results to return (default 50, max 250)."),
     offset: int = Query(default=0, ge=0, description="Result offset for pagination."),
     session: AsyncSession = Depends(get_db),
@@ -147,6 +150,7 @@ async def get_top_leads(
         min_value=min_value,
         max_value=max_value,
     )
+    scoring_mode = _coerce_scoring_mode(scoring_mode)
     order_by = _build_sort_expression(sort_by, sort_dir)
 
     # Data query â ordered by score DESC
@@ -154,6 +158,7 @@ async def get_top_leads(
         select(Property, Signal, Score)
         .join(Signal, Signal.property_id == Property.id)
         .join(Score, Score.property_id == Property.id)
+        .where(Score.scoring_mode == scoring_mode)
         .order_by(*order_by)
         .limit(limit)
         .offset(offset)
@@ -169,6 +174,7 @@ async def get_top_leads(
         select(func.count(Property.id))
         .join(Signal, Signal.property_id == Property.id)
         .join(Score, Score.property_id == Property.id)
+        .where(Score.scoring_mode == scoring_mode)
     )
     if conditions:
         count_stmt = count_stmt.where(*conditions)
@@ -185,6 +191,7 @@ async def get_top_leads(
 @router.get("/leads/new", response_model=LeadsListResponse)
 async def get_new_leads(
     limit: int = Query(default=50, ge=1, le=1000, description="Max results (default 50, max 1000)."),
+    scoring_mode: str = Query(default=DEFAULT_SCORING_MODE, description="Scoring lens: broad, owner_occupant, or investor."),
     session: AsyncSession = Depends(get_db),
 ) -> LeadsListResponse:
     """
@@ -196,11 +203,13 @@ async def get_new_leads(
         LeadsListResponse with matched leads (up to `limit`) and total count.
     """
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=7)
+    scoring_mode = _coerce_scoring_mode(scoring_mode)
 
     data_stmt = (
         select(Property, Signal, Score)
         .join(Signal, Signal.property_id == Property.id)
         .join(Score, Score.property_id == Property.id)
+        .where(Score.scoring_mode == scoring_mode)
         .where(Score.last_updated >= cutoff)
         .order_by(Score.last_updated.desc())
         .limit(limit)
@@ -213,6 +222,7 @@ async def get_new_leads(
         select(func.count(Property.id))
         .join(Signal, Signal.property_id == Property.id)
         .join(Score, Score.property_id == Property.id)
+        .where(Score.scoring_mode == scoring_mode)
         .where(Score.last_updated >= cutoff)
     )
     count_result = await session.execute(count_stmt)
@@ -227,6 +237,7 @@ async def get_new_leads(
 @router.get("/property/{property_id}", response_model=PropertyDetailResponse)
 async def get_property_detail(
     property_id: str,
+    scoring_mode: str = Query(default=DEFAULT_SCORING_MODE, description="Scoring lens: broad, owner_occupant, or investor."),
     session: AsyncSession = Depends(get_db),
 ) -> PropertyDetailResponse:
     """
@@ -244,7 +255,11 @@ async def get_property_detail(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid property ID â must be a valid UUID.")
 
-    row = await _fetch_property_detail_row(session, Property.id == prop_uuid)
+    row = await _fetch_property_detail_row(
+        session,
+        Property.id == prop_uuid,
+        scoring_mode=_coerce_scoring_mode(scoring_mode),
+    )
     return _build_property_detail_response(row)
 
 
@@ -252,10 +267,16 @@ async def get_property_detail(
 async def get_property_detail_by_parcel_id(
     parcel_id: str,
     county: Optional[str] = Query(default=None, description="Optional county slug to disambiguate duplicate parcel IDs."),
+    scoring_mode: str = Query(default=DEFAULT_SCORING_MODE, description="Scoring lens: broad, owner_occupant, or investor."),
     session: AsyncSession = Depends(get_db),
 ) -> PropertyDetailResponse:
     """Return full property detail using the public parcel_id route key."""
-    row = await _fetch_property_detail_row_by_parcel_id(session, parcel_id=parcel_id, county=county)
+    row = await _fetch_property_detail_row_by_parcel_id(
+        session,
+        parcel_id=parcel_id,
+        county=county,
+        scoring_mode=_coerce_scoring_mode(scoring_mode),
+    )
     return _build_property_detail_response(row)
 
 
@@ -329,11 +350,17 @@ def _build_sort_expression(sort_by: str, sort_dir: str) -> tuple:
     return primary, secondary
 
 
-async def _fetch_property_detail_row(session: AsyncSession, condition) -> tuple[Property, Signal, Score]:
+async def _fetch_property_detail_row(
+    session: AsyncSession,
+    condition,
+    *,
+    scoring_mode: str,
+) -> tuple[Property, Signal, Score]:
     stmt = (
         select(Property, Signal, Score)
         .join(Signal, Signal.property_id == Property.id)
         .join(Score, Score.property_id == Property.id)
+        .where(Score.scoring_mode == scoring_mode)
         .where(condition)
     )
 
@@ -349,11 +376,13 @@ async def _fetch_property_detail_row_by_parcel_id(
     *,
     parcel_id: str,
     county: Optional[str],
+    scoring_mode: str,
 ) -> tuple[Property, Signal, Score]:
     stmt = (
         select(Property, Signal, Score)
         .join(Signal, Signal.property_id == Property.id)
         .join(Score, Score.property_id == Property.id)
+        .where(Score.scoring_mode == scoring_mode)
         .where(Property.parcel_id == parcel_id)
     )
     if county:
@@ -399,6 +428,7 @@ def _build_property_detail_response(row: tuple[Property, Signal, Score]) -> Prop
             score=_coerce_int(getattr(score, "score", None), default=0),
             rank=_coerce_rank(getattr(score, "rank", None)),
             reason=_coerce_reason_list(getattr(score, "reason", None)),
+            scoring_mode=_coerce_scoring_mode(getattr(score, "scoring_mode", None)),
             scoring_version=_coerce_text(getattr(score, "scoring_version", None)) or "v3",
             last_updated=_coerce_datetime(getattr(score, "last_updated", None)),
         ),
@@ -446,6 +476,13 @@ def _coerce_state(value: object) -> str:
 def _coerce_county(value: object) -> str:
     county = _coerce_text(value)
     return county.lower() if county else "shelby"
+
+
+def _coerce_scoring_mode(value: object) -> str:
+    try:
+        return get_scoring_mode(_coerce_text(value) or DEFAULT_SCORING_MODE).slug
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid scoring_mode. Use broad, owner_occupant, or investor.") from exc
 
 
 def _coerce_rank(value: object) -> str:

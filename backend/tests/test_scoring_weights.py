@@ -21,15 +21,19 @@ from __future__ import annotations
 import pytest
 
 from app.scoring.weights import (
+    DEFAULT_SCORING_MODE,
     DISTRESS_COMBO_BONUS,
     DISTRESS_COMBO_THRESHOLD,
     DISTRESS_SIGNALS,
     RANK_A_MIN,
     RANK_B_MIN,
     SCORING_VERSION,
+    SCORING_MODES,
     WEIGHTS,
     assign_rank,
     calculate_score,
+    calculate_score_for_mode,
+    get_scoring_mode,
 )
 
 
@@ -81,6 +85,21 @@ class TestConstants:
     def test_rank_thresholds(self):
         assert RANK_A_MIN == 25
         assert RANK_B_MIN == 10
+
+    def test_default_scoring_mode_is_broad(self):
+        assert DEFAULT_SCORING_MODE == "broad"
+
+    def test_scoring_modes_include_expected_lenses(self):
+        assert set(SCORING_MODES.keys()) == {"broad", "owner_occupant", "investor"}
+
+    def test_get_scoring_mode_returns_config(self):
+        config = get_scoring_mode("investor")
+        assert config.slug == "investor"
+        assert config.label == "Investor Acquisition"
+
+    def test_get_scoring_mode_rejects_unknown_mode(self):
+        with pytest.raises(ValueError):
+            get_scoring_mode("unknown")
 
 
 # ── Zero / empty cases ────────────────────────────────────────────────────────
@@ -167,6 +186,32 @@ class TestIndividualSignals:
         assert score == 15
         assert rank == "B"
         assert reasons == ["code_violation"]
+
+
+class TestModeSpecificScoring:
+    def test_owner_occupant_zeroes_corporate_signal(self):
+        score, rank, reasons = calculate_score_for_mode({"corporate_owner": True}, mode="owner_occupant")
+        assert score == 0
+        assert rank == "C"
+        assert reasons == ["corporate_owner"]
+
+    def test_investor_mode_rewards_corporate_and_out_of_state(self):
+        score, rank, reasons = calculate_score_for_mode(
+            {"corporate_owner": True, "out_of_state_owner": True},
+            mode="investor",
+        )
+        assert score == 25
+        assert rank == "B"
+        assert reasons == ["out_of_state_owner", "corporate_owner"]
+
+    def test_owner_occupant_prioritizes_long_term_over_absentee(self):
+        absentee_score, _, _ = calculate_score_for_mode({"absentee_owner": True}, mode="owner_occupant")
+        long_term_score, _, _ = calculate_score_for_mode({"long_term_owner": True}, mode="owner_occupant")
+        assert long_term_score > absentee_score
+
+    def test_assign_rank_uses_mode_thresholds(self):
+        assert assign_rank(29, mode="broad") == "A"
+        assert assign_rank(29, mode="owner_occupant") == "B"
 
 
 # ── Two-signal combination tests ──────────────────────────────────────────────

@@ -54,8 +54,8 @@ class Property(Base):
     signal: Mapped["Signal"] = relationship(  # noqa: F821
         "Signal", back_populates="property", uselist=False, lazy="select"
     )
-    score: Mapped["Score"] = relationship(  # noqa: F821
-        "Score", back_populates="property", uselist=False, lazy="select"
+    scores: Mapped[list["Score"]] = relationship(  # noqa: F821
+        "Score", back_populates="property", lazy="select"
     )
 
     def __repr__(self) -> str:

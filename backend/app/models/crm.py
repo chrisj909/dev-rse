@@ -78,6 +78,7 @@ class ScoreExport(BaseModel):
 
     value: int
     rank: str       # "A" | "B" | "C"
+    mode: str = "broad"
     version: str    # e.g. "v3"
 
 

@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 
 import { getClientApiBaseUrl } from '../lib/api';
+import { DEFAULT_SCORING_MODE, SCORING_MODES, getScoringModeLabel, normalizeScoringMode } from '../lib/scoringModes';
 
 interface Lead {
   county: string;
@@ -12,6 +14,7 @@ interface Lead {
   owner_name: string | null;
   score: number;
   rank: string;
+  scoring_mode: string;
   signal_count: number;
   signals: string[];
   last_updated: string;
@@ -38,15 +41,27 @@ function RankBadge({ rank }: { rank: string }) {
 }
 
 export default function Dashboard() {
+  const router = useRouter();
+  const pathname = usePathname();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [scoringMode, setScoringModeState] = useState(DEFAULT_SCORING_MODE);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setScoringModeState(normalizeScoringMode(new URLSearchParams(window.location.search).get('scoring_mode')));
+  }, []);
 
   const fetchLeads = useCallback(async () => {
     try {
-      const res = await fetch(`${getClientApiBaseUrl()}/api/leads?limit=${LEADS_FETCH_LIMIT}`);
+      const params = new URLSearchParams({
+        limit: String(LEADS_FETCH_LIMIT),
+        scoring_mode: scoringMode,
+      });
+      const res = await fetch(`${getClientApiBaseUrl()}/api/leads?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: LeadsResponse | Lead[] = await res.json();
       if (Array.isArray(data)) {
@@ -63,7 +78,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [scoringMode]);
 
   useEffect(() => {
     fetchLeads();
@@ -76,14 +91,37 @@ export default function Dashboard() {
   const totalSignals = leads.reduce((sum, l) => sum + (l.signal_count ?? 0), 0);
   const top5 = [...leads].sort((a, b) => b.score - a.score).slice(0, 5);
 
+  function setMode(nextMode: string) {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (nextMode === DEFAULT_SCORING_MODE) {
+      params.delete('scoring_mode');
+    } else {
+      params.set('scoring_mode', nextMode);
+    }
+    const query = params.toString();
+    setScoringModeState(normalizeScoringMode(nextMode));
+    router.push(query ? `${pathname}?${query}` : pathname);
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Real Estate Signal Engine</h1>
-          <p className="text-slate-500 text-sm mt-1">Shelby + Jefferson Counties, AL — Lead Scoring Dashboard</p>
+          <p className="text-slate-500 text-sm mt-1">Shelby + Jefferson Counties, AL — {getScoringModeLabel(scoringMode)} Dashboard</p>
         </div>
         <div className="text-right">
+          <label className="block text-xs uppercase tracking-wide text-gray-500">Scoring Lens</label>
+          <select
+            value={scoringMode}
+            onChange={e => setMode(e.target.value)}
+            className="mt-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-slate-700"
+          >
+            {SCORING_MODES.map(mode => (
+              <option key={mode.value} value={mode.value}>{mode.label}</option>
+            ))}
+          </select>
           {lastRefresh && (
             <p className="text-xs text-gray-500">Last updated: {lastRefresh.toLocaleTimeString()}</p>
           )}
@@ -120,7 +158,7 @@ export default function Dashboard() {
       <div className="bg-gray-800 rounded-lg border border-gray-700">
         <div className="px-5 py-4 border-b border-gray-700 flex items-center justify-between">
           <h2 className="text-white font-semibold">Top 5 Leads by Score</h2>
-          <Link href="/leads" className="text-blue-400 hover:text-blue-300 text-sm">View all →</Link>
+          <Link href={scoringMode === DEFAULT_SCORING_MODE ? '/leads' : `/leads?scoring_mode=${encodeURIComponent(scoringMode)}`} className="text-blue-400 hover:text-blue-300 text-sm">View all →</Link>
         </div>
         {loading ? (
           <div className="p-5 space-y-3">
@@ -148,7 +186,16 @@ export default function Dashboard() {
               {top5.map(lead => (
                 <tr
                   key={`${lead.county}:${lead.parcel_id}`}
-                  onClick={() => window.location.href = `/property?parcel_id=${encodeURIComponent(lead.parcel_id)}&county=${encodeURIComponent(lead.county)}`}
+                  onClick={() => {
+                    const params = new URLSearchParams({
+                      parcel_id: lead.parcel_id,
+                      county: lead.county,
+                    });
+                    if (scoringMode !== DEFAULT_SCORING_MODE) {
+                      params.set('scoring_mode', scoringMode);
+                    }
+                    window.location.href = `/property?${params.toString()}`;
+                  }}
                   className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
                   <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>
