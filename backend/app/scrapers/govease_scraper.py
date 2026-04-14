@@ -1,6 +1,8 @@
 """GovEase tax lien auction scraper for county overlays that are currently supported."""
 import httpx
 
+from .http_utils import polite_get_json
+
 API_URL = "https://api.govease.com/api/properties"
 
 
@@ -13,15 +15,19 @@ class GovEaseScraper:
             return []
         try:
             async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-                resp = await client.get(
+                data = await polite_get_json(
+                    client,
                     API_URL,
                     params={"state": "AL", "county": self.county, "page": 1, "per_page": 500},
                     headers={"Accept": "application/json"},
                 )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    props = data.get("properties") or data if isinstance(data, list) else []
-                    return [self._parse(p) for p in props if p.get("parcel_number")]
+                if isinstance(data, dict):
+                    props = data.get("properties") or []
+                elif isinstance(data, list):
+                    props = data
+                else:
+                    props = []
+                return [self._parse(p) for p in props if p.get("parcel_number")]
         except Exception:
             pass
         return []

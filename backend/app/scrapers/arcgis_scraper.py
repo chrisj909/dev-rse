@@ -1,8 +1,9 @@
 """County-aware ArcGIS parcel scrapers for Alabama county parcel data."""
+import httpx
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
+from .http_utils import polite_get_json, polite_page_pause
 
 COUNTY_CONFIGS: dict[str, dict[str, Any]] = {
     "shelby": {
@@ -235,12 +236,7 @@ async def fetch_all(limit: int | None = None, county: str = "shelby") -> list[di
                 "returnGeometry": "false",
                 "f": "json",
             }
-            resp = await client.get(config["base_url"], params=params)
-            resp.raise_for_status()
-            data = resp.json()
-
-            if "error" in data:
-                raise RuntimeError(f"ArcGIS API error: {data['error']}")
+            data = await polite_get_json(client, config["base_url"], params=params)
 
             features = data.get("features", [])
             if not features:
@@ -256,6 +252,7 @@ async def fetch_all(limit: int | None = None, county: str = "shelby") -> list[di
             offset += page_size
             if not data.get("exceededTransferLimit", False) and len(features) < page_size:
                 break
+            await polite_page_pause()
 
     return results
 
@@ -279,12 +276,7 @@ async def fetch_delinquent_only(county: str = "shelby") -> list[dict]:
                 "returnGeometry": "false",
                 "f": "json",
             }
-            resp = await client.get(config["base_url"], params=params)
-            resp.raise_for_status()
-            data = resp.json()
-
-            if "error" in data:
-                raise RuntimeError(f"ArcGIS API error: {data['error']}")
+            data = await polite_get_json(client, config["base_url"], params=params)
 
             features = data.get("features", [])
             if not features:
@@ -298,6 +290,7 @@ async def fetch_delinquent_only(county: str = "shelby") -> list[dict]:
             offset += page_size
             if not data.get("exceededTransferLimit", False) and len(features) < page_size:
                 break
+            await polite_page_pause()
 
     return results
 
