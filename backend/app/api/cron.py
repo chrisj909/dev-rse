@@ -33,12 +33,12 @@ async def run_signals_cron(
 
     start = time.time()
     result = await session.execute(select(Property))
-    properties = result.scalars().all()
+    properties = list(result.scalars().all())
 
     signal_engine = SignalEngine()
     signal_counts = await signal_engine.process_batch(properties, session)
     scoring_modes = await ScoringEngine.score_all_modes_batch(properties, session)
-    scoring_counts = dict(scoring_modes.get(DEFAULT_SCORING_MODE, {}))
+    scoring_counts: dict[str, object] = dict(scoring_modes.get(DEFAULT_SCORING_MODE, {}))
     scoring_counts["modes"] = scoring_modes
     await session.commit()
     elapsed = round(time.time() - start, 2)

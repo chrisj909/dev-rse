@@ -8,12 +8,24 @@ interface IngestResult {
   county?: string;
   fetched?: number;
   upserted?: number;
+  batches_completed?: number;
   signals?: { processed?: number; error?: string };
   scoring?: { processed?: number; errors?: number };
+  tax_delinquency?: { processed?: number; updated?: number; not_found?: number };
+  retrieval?: {
+    mode?: string;
+    updated_since?: string | null;
+    delta_days?: number | null;
+    start_offset?: number;
+    next_offset?: number | null;
+    has_more?: boolean;
+  };
   elapsed_seconds?: number;
   sample?: unknown[];
   error?: string;
 }
+
+const DEFAULT_BATCH_SIZE = 1000;
 
 function summarizeErrorText(status: number, text: string): string {
   const trimmed = text.trim();
@@ -56,49 +68,130 @@ export default function IngestPage() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<IngestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
   const [dryRun, setDryRun] = useState(true);
   const [delinquentOnly, setDelinquentOnly] = useState(false);
   const [county, setCounty] = useState('all');
   const [limit, setLimit] = useState('100');
   const [cronSecret, setCronSecret] = useState('');
 
+  async function requestIngest(params: URLSearchParams): Promise<IngestResult> {
+    const res = await fetch(`${getClientApiBaseUrl()}/api/ingest/run?${params}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(cronSecret ? { 'x-cron-secret': cronSecret } : {}),
+      },
+    });
+    const { json, text } = await readApiResponse(res);
+
+    if (!res.ok) {
+      if (json && typeof json === 'object' && json !== null) {
+        const detail = 'detail' in json ? json.detail : null;
+        const message = 'message' in json ? json.message : null;
+        if (typeof detail === 'string' && detail.trim()) {
+          throw new Error(detail);
+        }
+        if (typeof message === 'string' && message.trim()) {
+          throw new Error(message);
+        }
+        throw new Error(JSON.stringify(json));
+      }
+      throw new Error(summarizeErrorText(res.status, text));
+    }
+
+    if (json && typeof json === 'object') {
+      return json as IngestResult;
+    }
+
+    throw new Error('The API returned a non-JSON success response, so the ingest result could not be displayed.');
+  }
+
   async function runIngest() {
     setRunning(true);
     setResult(null);
     setError(null);
+    setProgress(null);
     try {
-      const params = new URLSearchParams();
-      if (county) params.set('county', county);
-      if (dryRun) params.set('dry_run', 'true');
-      if (delinquentOnly) params.set('delinquent_only', 'true');
-      if (limit) params.set('limit', limit);
-      const res = await fetch(`${getClientApiBaseUrl()}/api/ingest/run?${params}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(cronSecret ? { 'x-cron-secret': cronSecret } : {}),
-        },
-      });
-      const { json, text } = await readApiResponse(res);
+      const trimmedLimit = limit.trim();
+      const autoBatch = !dryRun && !delinquentOnly && county !== 'all' && !trimmedLimit;
 
-      if (!res.ok) {
-        if (json && typeof json === 'object' && json !== null) {
-          const detail = 'detail' in json ? json.detail : null;
-          const message = 'message' in json ? json.message : null;
-          if (typeof detail === 'string' && detail.trim()) {
-            setError(detail);
-          } else if (typeof message === 'string' && message.trim()) {
-            setError(message);
-          } else {
-            setError(JSON.stringify(json));
+      if (!trimmedLimit && county === 'all' && !dryRun) {
+        throw new Error('Full all-county ingest is too large for one serverless request. Select a single county or enter a record limit.');
+      }
+
+      if (autoBatch) {
+        let startOffset = 0;
+        let batchNumber = 0;
+        const aggregate: IngestResult = {
+          status: 'ok',
+          county,
+          fetched: 0,
+          upserted: 0,
+          batches_completed: 0,
+          signals: { processed: 0 },
+          scoring: { processed: 0, errors: 0 },
+          tax_delinquency: { processed: 0, updated: 0, not_found: 0 },
+          retrieval: { mode: 'full', start_offset: 0, next_offset: null, has_more: false },
+          elapsed_seconds: 0,
+        };
+
+        while (true) {
+          batchNumber += 1;
+          setProgress(`Running batch ${batchNumber} from offset ${startOffset}...`);
+
+          const params = new URLSearchParams();
+          params.set('county', county);
+          params.set('limit', String(DEFAULT_BATCH_SIZE));
+          params.set('start_offset', String(startOffset));
+
+          const batch = await requestIngest(params);
+          aggregate.fetched = (aggregate.fetched ?? 0) + (batch.fetched ?? 0);
+          aggregate.upserted = (aggregate.upserted ?? 0) + (batch.upserted ?? 0);
+          aggregate.batches_completed = batchNumber;
+          aggregate.elapsed_seconds = (aggregate.elapsed_seconds ?? 0) + (batch.elapsed_seconds ?? 0);
+
+          if (aggregate.signals && batch.signals?.processed) {
+            aggregate.signals.processed = (aggregate.signals.processed ?? 0) + batch.signals.processed;
           }
-        } else {
-          setError(summarizeErrorText(res.status, text));
+          if (aggregate.scoring) {
+            aggregate.scoring.processed = (aggregate.scoring.processed ?? 0) + (batch.scoring?.processed ?? 0);
+            aggregate.scoring.errors = (aggregate.scoring.errors ?? 0) + (batch.scoring?.errors ?? 0);
+          }
+          if (aggregate.tax_delinquency) {
+            aggregate.tax_delinquency.processed = (aggregate.tax_delinquency.processed ?? 0) + (batch.tax_delinquency?.processed ?? 0);
+            aggregate.tax_delinquency.updated = (aggregate.tax_delinquency.updated ?? 0) + (batch.tax_delinquency?.updated ?? 0);
+            aggregate.tax_delinquency.not_found = (aggregate.tax_delinquency.not_found ?? 0) + (batch.tax_delinquency?.not_found ?? 0);
+          }
+
+          aggregate.retrieval = batch.retrieval ?? aggregate.retrieval;
+
+          const nextOffset = batch.retrieval?.next_offset;
+          const hasMore = batch.retrieval?.has_more === true;
+          if (!hasMore || batch.fetched === 0 || nextOffset == null || nextOffset <= startOffset) {
+            aggregate.retrieval = {
+              ...(aggregate.retrieval ?? {}),
+              start_offset: 0,
+              next_offset: null,
+              has_more: false,
+            };
+            setResult(aggregate);
+            setProgress(`Completed ${batchNumber} batch${batchNumber === 1 ? '' : 'es'}.`);
+            break;
+          }
+
+          startOffset = nextOffset;
+          setProgress(`Completed batch ${batchNumber}; ${aggregate.fetched} records fetched so far.`);
         }
-      } else if (json && typeof json === 'object') {
-        setResult(json as IngestResult);
       } else {
-        setError('The API returned a non-JSON success response, so the ingest result could not be displayed.');
+        const params = new URLSearchParams();
+        if (county) params.set('county', county);
+        if (dryRun) params.set('dry_run', 'true');
+        if (delinquentOnly) params.set('delinquent_only', 'true');
+        if (trimmedLimit) params.set('limit', trimmedLimit);
+
+        const singleRun = await requestIngest(params);
+        setResult(singleRun);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Network error');
@@ -165,7 +258,7 @@ export default function IngestPage() {
         <div>
           <label className="block text-white text-sm mb-1">Record limit</label>
           <input type="number" value={limit} onChange={e => setLimit(e.target.value)} placeholder="Leave blank for all records" className="w-full bg-gray-700 border border-gray-600 text-white placeholder-gray-500 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
-          <p className="text-gray-400 text-xs mt-1">Start with 100 to test, remove limit for full ingest</p>
+          <p className="text-gray-400 text-xs mt-1">Start with 100 to test. Leave blank on a single-county live ingest to auto-batch the full run in 1,000-record chunks.</p>
         </div>
         <div>
           <label className="block text-white text-sm mb-1">Cron Secret</label>
@@ -175,6 +268,12 @@ export default function IngestPage() {
       <button onClick={runIngest} disabled={running} className={`w-full py-3 rounded-lg font-semibold text-white transition-colors ${running ? 'bg-gray-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500'}`}>
         {running ? 'Running ingestion\u2026' : 'Run Ingestion'}
       </button>
+      {progress && (
+        <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4 text-blue-200 text-sm">
+          <p className="font-semibold mb-1">Progress</p>
+          <p>{progress}</p>
+        </div>
+      )}
       {error && (
         <div className="bg-red-900/40 border border-red-700 rounded-lg p-4 text-red-300 text-sm">
           <p className="font-semibold mb-1">Error</p><p>{error}</p>
@@ -186,6 +285,7 @@ export default function IngestPage() {
             <span className="w-2 h-2 rounded-full bg-green-400" />
             <h2 className="text-white font-semibold">{result.status === 'dry_run' ? 'Dry Run Complete' : 'Ingestion Complete'}</h2>
             {result.county && <span className="text-gray-400 text-xs">scope: {result.county}</span>}
+            {result.batches_completed ? <span className="text-gray-400 text-xs">batches: {result.batches_completed}</span> : null}
             {result.elapsed_seconds && <span className="text-gray-400 text-xs ml-auto">{result.elapsed_seconds}s</span>}
           </div>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

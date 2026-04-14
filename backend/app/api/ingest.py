@@ -55,6 +55,11 @@ async def run_ingest(
     delinquent_only: bool = Query(False),
     dry_run: bool = Query(False),
     limit: int = Query(None),
+    start_offset: int = Query(
+        default=0,
+        ge=0,
+        description="Result offset for chunked single-county ingest runs.",
+    ),
     updated_since: datetime | None = Query(
         default=None,
         description="UTC timestamp cutoff for changed-since retrieval, e.g. 2026-04-13T00:00:00Z.",
@@ -78,11 +83,18 @@ async def run_ingest(
 
     start = time.time()
     resolved_updated_since = _resolve_updated_since(updated_since, delta_days)
+    normalized_county = county.lower()
 
     if delinquent_only and resolved_updated_since is not None:
         raise HTTPException(
             status_code=400,
             detail="Incremental retrieval is not supported for delinquent_only runs.",
+        )
+
+    if start_offset and normalized_county == "all":
+        raise HTTPException(
+            status_code=400,
+            detail="start_offset is only supported for single-county ingest runs.",
         )
 
     try:
@@ -93,11 +105,14 @@ async def run_ingest(
                 limit=limit,
                 county=county,
                 updated_since=resolved_updated_since,
+                start_offset=start_offset,
             )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scraper error: {str(e)}")
 
     fetched = len(records)
+    next_offset = start_offset + fetched if fetched else None
+    has_more = bool(limit and fetched == limit and not delinquent_only and normalized_county != "all")
 
     if dry_run:
         return {
@@ -106,6 +121,9 @@ async def run_ingest(
                 "mode": "incremental" if resolved_updated_since else "full",
                 "updated_since": resolved_updated_since.isoformat() if resolved_updated_since else None,
                 "delta_days": delta_days,
+                "start_offset": start_offset,
+                "next_offset": next_offset,
+                "has_more": has_more,
             },
             "fetched": fetched,
             "sample": records[:5],
@@ -198,6 +216,9 @@ async def run_ingest(
             "mode": "incremental" if resolved_updated_since else "full",
             "updated_since": resolved_updated_since.isoformat() if resolved_updated_since else None,
             "delta_days": delta_days,
+            "start_offset": start_offset,
+            "next_offset": next_offset,
+            "has_more": has_more,
         },
         "fetched": fetched,
         "upserted": upserted,

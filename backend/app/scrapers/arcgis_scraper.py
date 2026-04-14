@@ -255,21 +255,26 @@ async def fetch_all(
     limit: int | None = None,
     county: str = "shelby",
     updated_since: datetime | None = None,
+    start_offset: int = 0,
 ) -> list[dict]:
     """Paginate through all parcels for the configured county."""
     results: list[dict] = []
-    offset = 0
+    offset = start_offset
     config = COUNTY_CONFIGS[_normalize_county(county)]
     page_size = int(config["page_size"])
     where_clause = _build_where_clause(config, updated_since)
 
     async with httpx.AsyncClient(timeout=30) as client:
         while True:
+            remaining = None if limit is None else max(limit - len(results), 0)
+            if remaining == 0:
+                break
+
             params = {
                 "where": where_clause,
                 "outFields": ",".join(config["fields"]),
                 "resultOffset": offset,
-                "resultRecordCount": page_size,
+                "resultRecordCount": min(page_size, remaining) if remaining is not None else page_size,
                 "returnGeometry": "false",
                 "f": "json",
             }
@@ -342,8 +347,14 @@ class ArcGISScraper:
         self,
         limit: int | None = None,
         updated_since: datetime | None = None,
+        start_offset: int = 0,
     ) -> list[dict]:
-        return await fetch_all(limit=limit, county=self.county, updated_since=updated_since)
+        return await fetch_all(
+            limit=limit,
+            county=self.county,
+            updated_since=updated_since,
+            start_offset=start_offset,
+        )
 
     async def fetch_delinquent_only(self) -> list[dict]:
         return await fetch_delinquent_only(county=self.county)

@@ -20,13 +20,22 @@ async def run_all_scrapers(
     limit: int | None = None,
     county: str = "all",
     updated_since: datetime | None = None,
+    start_offset: int = 0,
 ) -> list[dict]:
     """Run county scrapers and merge results by (county, parcel_id)."""
     results: dict[tuple[str, str], dict] = {}
+    counties = _resolve_counties(county)
 
-    for county_name in _resolve_counties(county):
+    if start_offset and len(counties) != 1:
+        raise ValueError("start_offset is only supported for single-county ingest runs")
+
+    for county_name in counties:
         arcgis = ArcGISScraper(county=county_name)
-        for record in await arcgis.fetch_all(limit=limit, updated_since=updated_since):
+        for record in await arcgis.fetch_all(
+            limit=limit,
+            updated_since=updated_since,
+            start_offset=start_offset,
+        ):
             results[(record["county"], record["parcel_id"])] = record
 
         govease = GovEaseScraper(county=county_name)

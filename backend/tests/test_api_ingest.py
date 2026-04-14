@@ -52,10 +52,11 @@ def test_ingest_route_passes_incremental_cutoff_to_scrapers(test_client, monkeyp
 
     captured: dict[str, object] = {}
 
-    async def fake_run_all_scrapers(*, limit=None, county="all", updated_since=None):
+    async def fake_run_all_scrapers(*, limit=None, county="all", updated_since=None, start_offset=0):
         captured["limit"] = limit
         captured["county"] = county
         captured["updated_since"] = updated_since
+        captured["start_offset"] = start_offset
         return []
 
     monkeypatch.setattr("app.api.ingest.run_all_scrapers", fake_run_all_scrapers)
@@ -68,6 +69,7 @@ def test_ingest_route_passes_incremental_cutoff_to_scrapers(test_client, monkeyp
     assert resp.json()["retrieval"]["delta_days"] == 1
     assert captured["county"] == "shelby"
     assert captured["updated_since"] is not None
+    assert captured["start_offset"] == 0
 
 
 def test_ingest_route_passes_explicit_updated_since_to_scrapers(test_client, monkeypatch):
@@ -75,8 +77,9 @@ def test_ingest_route_passes_explicit_updated_since_to_scrapers(test_client, mon
 
     captured: dict[str, object] = {}
 
-    async def fake_run_all_scrapers(*, limit=None, county="all", updated_since=None):
+    async def fake_run_all_scrapers(*, limit=None, county="all", updated_since=None, start_offset=0):
         captured["updated_since"] = updated_since
+        captured["start_offset"] = start_offset
         return []
 
     monkeypatch.setattr("app.api.ingest.run_all_scrapers", fake_run_all_scrapers)
@@ -86,3 +89,39 @@ def test_ingest_route_passes_explicit_updated_since_to_scrapers(test_client, mon
     assert resp.status_code == 200
     assert resp.json()["retrieval"]["updated_since"] == "2026-04-13T00:00:00+00:00"
     assert captured["updated_since"] == datetime(2026, 4, 13, 0, 0, tzinfo=timezone.utc)
+    assert captured["start_offset"] == 0
+
+
+def test_ingest_route_rejects_start_offset_for_all_counties(test_client, monkeypatch):
+    monkeypatch.setattr("app.api.ingest.settings.cron_secret", None)
+
+    resp = test_client.post("/api/ingest/run?county=all&start_offset=100")
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "start_offset is only supported for single-county ingest runs."
+
+
+def test_ingest_route_passes_start_offset_and_limit_to_scrapers(test_client, monkeypatch):
+    monkeypatch.setattr("app.api.ingest.settings.cron_secret", None)
+
+    captured: dict[str, object] = {}
+
+    async def fake_run_all_scrapers(*, limit=None, county="all", updated_since=None, start_offset=0):
+        captured["limit"] = limit
+        captured["county"] = county
+        captured["start_offset"] = start_offset
+        return [{"county": "shelby", "parcel_id": "1"}]
+
+    monkeypatch.setattr("app.api.ingest.run_all_scrapers", fake_run_all_scrapers)
+
+    resp = test_client.post("/api/ingest/run?county=shelby&limit=1000&start_offset=2000&dry_run=true")
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["fetched"] == 1
+    assert payload["retrieval"]["start_offset"] == 2000
+    assert payload["retrieval"]["next_offset"] == 2001
+    assert payload["retrieval"]["has_more"] is False
+    assert captured["county"] == "shelby"
+    assert captured["limit"] == 1000
+    assert captured["start_offset"] == 2000
