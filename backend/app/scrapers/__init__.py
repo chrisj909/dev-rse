@@ -1,4 +1,6 @@
 """County-aware parcel and overlay scrapers."""
+from datetime import datetime
+
 from .arcgis_scraper import ArcGISScraper
 from .govease_scraper import GovEaseScraper
 
@@ -14,17 +16,21 @@ def _resolve_counties(county: str | None) -> list[str]:
     return [normalized]
 
 
-async def run_all_scrapers(limit: int = None, county: str = "all") -> list[dict]:
+async def run_all_scrapers(
+    limit: int | None = None,
+    county: str = "all",
+    updated_since: datetime | None = None,
+) -> list[dict]:
     """Run county scrapers and merge results by (county, parcel_id)."""
     results: dict[tuple[str, str], dict] = {}
 
     for county_name in _resolve_counties(county):
         arcgis = ArcGISScraper(county=county_name)
-        for record in await arcgis.fetch_all(limit=limit):
+        for record in await arcgis.fetch_all(limit=limit, updated_since=updated_since):
             results[(record["county"], record["parcel_id"])] = record
 
         govease = GovEaseScraper(county=county_name)
-        for record in await govease.fetch_all():
+        for record in await govease.fetch_all(updated_since=updated_since):
             key = (record["county"], record["parcel_id"])
             if key in results:
                 results[key]["is_tax_delinquent"] = True

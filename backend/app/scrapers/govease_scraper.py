@@ -1,4 +1,6 @@
 """GovEase tax lien auction scraper for county overlays that are currently supported."""
+from datetime import datetime
+
 import httpx
 
 from .http_utils import polite_get_json
@@ -10,7 +12,8 @@ class GovEaseScraper:
     def __init__(self, county: str = "shelby") -> None:
         self.county = (county or "shelby").strip().lower()
 
-    async def fetch_all(self) -> list[dict]:
+    async def fetch_all(self, updated_since: datetime | None = None) -> list[dict]:
+        del updated_since
         if self.county != "shelby":
             return []
         try:

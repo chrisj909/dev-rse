@@ -149,6 +149,8 @@ Note: property detail navigation currently uses the query-parameter route above 
 ### 6.1 Ingest Flow
 
 1. `POST /api/ingest/run` triggers ArcGIS and optional overlay scrapers.
+   Optional incremental parameters: `updated_since=<ISO timestamp>` or `delta_days=<N>`.
+   Current source-side changed-since support is strongest for Shelby parcel data; unsupported sources fall back to a full fetch.
 2. Results are merged by `parcel_id`.
 3. Properties are upserted into the `properties` table.
 4. Signal generation runs for the updated properties.
@@ -167,6 +169,8 @@ Note: property detail navigation currently uses the query-parameter route above 
 
 `GET /api/cron/run-signals` is a protected endpoint that re-runs signal and scoring logic over existing properties.
 The deployed Vercel cron calls this route daily using `CRON_SECRET` bearer authentication.
+
+This same full scoring path is the one-time backfill mechanism for newly added scoring modes on existing properties.
 
 The current schedule in `vercel.json` is `0 6 * * *` (06:00 UTC daily).
 
@@ -547,6 +551,8 @@ curl -X POST 'http://127.0.0.1:8000/api/ingest/run?dry_run=true&limit=100'
 curl -X POST 'http://127.0.0.1:8000/api/ingest/run?limit=100' -H 'x-cron-secret: YOUR_SECRET'
 curl -X POST 'http://127.0.0.1:8000/api/ingest/run?county=jefferson&dry_run=true&limit=100'
 curl -X POST 'http://127.0.0.1:8000/api/ingest/run?county=all&limit=100' -H 'x-cron-secret: YOUR_SECRET'
+curl -X POST 'http://127.0.0.1:8000/api/ingest/run?county=shelby&delta_days=1&dry_run=true'
+curl -X POST 'http://127.0.0.1:8000/api/ingest/run?county=shelby&updated_since=2026-04-13T00:00:00Z' -H 'x-cron-secret: YOUR_SECRET'
 ```
 
 Equivalent bearer-auth pattern:
@@ -561,6 +567,13 @@ CSV ingestion script for local and sample workflows:
 ```bash
 cd backend
 python scripts/ingest_properties.py --csv ../data/sample_properties.csv
+```
+
+Scoring-only backfill for existing properties:
+
+```bash
+cd backend
+python scripts/run_scoring.py
 ```
 
 ### 12.6 Testing

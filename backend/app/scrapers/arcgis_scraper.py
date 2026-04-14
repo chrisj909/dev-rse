@@ -1,9 +1,13 @@
 """County-aware ArcGIS parcel scrapers for Alabama county parcel data."""
+import logging
+
 import httpx
 from datetime import datetime, timezone
 from typing import Any
 
 from .http_utils import polite_get_json, polite_page_pause
+
+log = logging.getLogger("rse.scrapers.arcgis")
 
 COUNTY_CONFIGS: dict[str, dict[str, Any]] = {
     "shelby": {
@@ -31,6 +35,7 @@ COUNTY_CONFIGS: dict[str, dict[str, Any]] = {
         "page_size": 1000,
         "default_where": "1=1",
         "delinquent_where": "TAX_DUE_CD='Y'",
+        "updated_field": "Transcreate_Save",
     },
     "jefferson": {
         "county": "jefferson",
@@ -79,6 +84,33 @@ def _normalize_county(county: str | None) -> str:
     if normalized not in COUNTY_CONFIGS:
         raise ValueError(f"Unsupported county: {county}")
     return normalized
+
+
+def _normalize_updated_since(updated_since: datetime | None) -> datetime | None:
+    if updated_since is None:
+        return None
+    if updated_since.tzinfo is None:
+        return updated_since.replace(tzinfo=timezone.utc)
+    return updated_since.astimezone(timezone.utc)
+
+
+def _build_where_clause(config: dict[str, Any], updated_since: datetime | None = None) -> str:
+    base_where = str(config["default_where"])
+    normalized_updated_since = _normalize_updated_since(updated_since)
+    updated_field = config.get("updated_field")
+
+    if normalized_updated_since is None:
+        return base_where
+
+    if not updated_field:
+        log.warning(
+            "Incremental retrieval requested for county=%s, but no supported updated field is configured; falling back to full fetch.",
+            config.get("county", "unknown"),
+        )
+        return base_where
+
+    timestamp_literal = normalized_updated_since.strftime("%Y-%m-%d %H:%M:%S")
+    return f"({base_where}) AND {updated_field} >= DATE '{timestamp_literal}'"
 
 
 def _record_to_dict_shelby(attrs: dict) -> dict:
@@ -219,17 +251,22 @@ def _record_to_dict(attrs: dict, county: str) -> dict:
     return _record_to_dict_shelby(attrs)
 
 
-async def fetch_all(limit: int | None = None, county: str = "shelby") -> list[dict]:
+async def fetch_all(
+    limit: int | None = None,
+    county: str = "shelby",
+    updated_since: datetime | None = None,
+) -> list[dict]:
     """Paginate through all parcels for the configured county."""
     results: list[dict] = []
     offset = 0
     config = COUNTY_CONFIGS[_normalize_county(county)]
     page_size = int(config["page_size"])
+    where_clause = _build_where_clause(config, updated_since)
 
     async with httpx.AsyncClient(timeout=30) as client:
         while True:
             params = {
-                "where": config["default_where"],
+                "where": where_clause,
                 "outFields": ",".join(config["fields"]),
                 "resultOffset": offset,
                 "resultRecordCount": page_size,
@@ -301,8 +338,12 @@ class ArcGISScraper:
     def __init__(self, county: str = "shelby") -> None:
         self.county = _normalize_county(county)
 
-    async def fetch_all(self, limit: int | None = None) -> list[dict]:
-        return await fetch_all(limit=limit, county=self.county)
+    async def fetch_all(
+        self,
+        limit: int | None = None,
+        updated_since: datetime | None = None,
+    ) -> list[dict]:
+        return await fetch_all(limit=limit, county=self.county, updated_since=updated_since)
 
     async def fetch_delinquent_only(self) -> list[dict]:
         return await fetch_delinquent_only(county=self.county)

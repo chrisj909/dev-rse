@@ -4,6 +4,7 @@ run signal + scoring engines on new/updated records.
 Secured with CRON_SECRET via bearer auth, X-Cron-Secret, or query param.
 """
 import time
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Header, HTTPException, Depends, Query
 from sqlalchemy import select, tuple_
@@ -23,6 +24,28 @@ from app.services.tax_delinquency import TaxDelinquencyService
 router = APIRouter()
 
 
+def _normalize_updated_since(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _resolve_updated_since(
+    updated_since: datetime | None,
+    delta_days: int | None,
+) -> datetime | None:
+    if updated_since is not None and delta_days is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Pass either updated_since or delta_days, not both.",
+        )
+    if updated_since is not None:
+        return _normalize_updated_since(updated_since)
+    if delta_days is not None:
+        return datetime.now(tz=timezone.utc) - timedelta(days=delta_days)
+    return None
+
+
 @router.post("/ingest/run")
 async def run_ingest(
     x_cron_secret: str = Header(None),
@@ -32,6 +55,16 @@ async def run_ingest(
     delinquent_only: bool = Query(False),
     dry_run: bool = Query(False),
     limit: int = Query(None),
+    updated_since: datetime | None = Query(
+        default=None,
+        description="UTC timestamp cutoff for changed-since retrieval, e.g. 2026-04-13T00:00:00Z.",
+    ),
+    delta_days: int | None = Query(
+        default=None,
+        ge=1,
+        le=30,
+        description="Shortcut for incremental retrieval over the last N days.",
+    ),
     session: AsyncSession = Depends(get_session),
 ):
     """Run scrapers and ingest data. Secured with CRON_SECRET."""
@@ -44,12 +77,23 @@ async def run_ingest(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     start = time.time()
+    resolved_updated_since = _resolve_updated_since(updated_since, delta_days)
+
+    if delinquent_only and resolved_updated_since is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Incremental retrieval is not supported for delinquent_only runs.",
+        )
 
     try:
         if delinquent_only:
             records = await run_delinquent_only(county=county)
         else:
-            records = await run_all_scrapers(limit=limit, county=county)
+            records = await run_all_scrapers(
+                limit=limit,
+                county=county,
+                updated_since=resolved_updated_since,
+            )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scraper error: {str(e)}")
 
@@ -58,6 +102,11 @@ async def run_ingest(
     if dry_run:
         return {
             "status": "dry_run",
+            "retrieval": {
+                "mode": "incremental" if resolved_updated_since else "full",
+                "updated_since": resolved_updated_since.isoformat() if resolved_updated_since else None,
+                "delta_days": delta_days,
+            },
             "fetched": fetched,
             "sample": records[:5],
             "elapsed_seconds": round(time.time() - start, 2),
@@ -115,7 +164,7 @@ async def run_ingest(
         if rec.get("parcel_id")
     }
     signal_result = {"processed": upserted}
-    score_result = {"processed": 0}
+    score_result: dict[str, object] = {"processed": 0}
     tax_result = {"processed": 0, "updated": 0, "not_found": 0}
     try:
         unique_keys = list(dict.fromkeys(property_keys))
@@ -124,7 +173,7 @@ async def run_ingest(
                 tuple_(Property.county, Property.parcel_id).in_(unique_keys)
             )
         )
-        properties = result.scalars().all()
+        properties = list(result.scalars().all())
         signal_result = await signal_engine.process_batch(properties, session)
         tax_records = [
             {
@@ -145,6 +194,11 @@ async def run_ingest(
     return {
         "status": "ok",
         "county": county.lower(),
+        "retrieval": {
+            "mode": "incremental" if resolved_updated_since else "full",
+            "updated_since": resolved_updated_since.isoformat() if resolved_updated_since else None,
+            "delta_days": delta_days,
+        },
         "fetched": fetched,
         "upserted": upserted,
         "signals": signal_result,

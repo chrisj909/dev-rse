@@ -108,6 +108,9 @@ Important:
 - Vercel cron cannot send custom `X-Cron-Secret` headers by default
 - repo now supports bearer-token auth using `CRON_SECRET`
 - `vercel.json` contains the scheduled cron entry
+- `GET /api/cron/run-signals` is also the one-step scoring backfill for existing properties when a new scoring mode is introduced
+- `POST /api/ingest/run` now supports caller-managed incremental windows via `updated_since=<ISO timestamp>` or `delta_days=<N>`
+- current source-side changed-since support is reliable for Shelby ArcGIS parcel data; Jefferson and GovEase still fall back to full retrieval
 
 ## 7. Operational Rhythm
 
