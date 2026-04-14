@@ -15,6 +15,43 @@ interface IngestResult {
   error?: string;
 }
 
+function summarizeErrorText(status: number, text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return `HTTP ${status}`;
+  }
+
+  if (trimmed.includes('Authentication Required')) {
+    return 'Request was blocked by deployment protection before it reached the API.';
+  }
+
+  if (trimmed.startsWith('An error occurred')) {
+    return `${trimmed} This usually means the serverless function failed before returning JSON.`;
+  }
+
+  const normalized = trimmed
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return normalized ? `HTTP ${status}: ${normalized.slice(0, 240)}` : `HTTP ${status}`;
+}
+
+async function readApiResponse(res: Response): Promise<{ json: unknown | null; text: string }> {
+  const text = await res.text();
+  if (!text.trim()) {
+    return { json: null, text };
+  }
+
+  try {
+    return { json: JSON.parse(text), text };
+  } catch {
+    return { json: null, text };
+  }
+}
+
 export default function IngestPage() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<IngestResult | null>(null);
@@ -42,9 +79,27 @@ export default function IngestPage() {
           ...(cronSecret ? { 'x-cron-secret': cronSecret } : {}),
         },
       });
-      const data = await res.json();
-      if (!res.ok) setError(data.detail ?? JSON.stringify(data));
-      else setResult(data);
+      const { json, text } = await readApiResponse(res);
+
+      if (!res.ok) {
+        if (json && typeof json === 'object' && json !== null) {
+          const detail = 'detail' in json ? json.detail : null;
+          const message = 'message' in json ? json.message : null;
+          if (typeof detail === 'string' && detail.trim()) {
+            setError(detail);
+          } else if (typeof message === 'string' && message.trim()) {
+            setError(message);
+          } else {
+            setError(JSON.stringify(json));
+          }
+        } else {
+          setError(summarizeErrorText(res.status, text));
+        }
+      } else if (json && typeof json === 'object') {
+        setResult(json as IngestResult);
+      } else {
+        setError('The API returned a non-JSON success response, so the ingest result could not be displayed.');
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Network error');
     } finally {
