@@ -17,7 +17,7 @@ from app.db.session import get_session
 from app.models.property import Property
 from app.scoring.engine import ScoringEngine
 from app.scoring.weights import DEFAULT_SCORING_MODE
-from app.scrapers import run_all_scrapers, run_delinquent_only
+from app.scrapers import run_all_scrapers_with_metadata, run_delinquent_only
 from app.signals.engine import SignalEngine
 from app.services.tax_delinquency import TaxDelinquencyService
 
@@ -100,19 +100,22 @@ async def run_ingest(
     try:
         if delinquent_only:
             records = await run_delinquent_only(county=county)
+            primary_fetched = len(records)
         else:
-            records = await run_all_scrapers(
+            scrape_result = await run_all_scrapers_with_metadata(
                 limit=limit,
                 county=county,
                 updated_since=resolved_updated_since,
                 start_offset=start_offset,
             )
+            records = scrape_result["records"]
+            primary_fetched = scrape_result["primary_fetched"]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scraper error: {str(e)}")
 
     fetched = len(records)
-    next_offset = start_offset + fetched if fetched else None
-    has_more = bool(limit and fetched == limit and not delinquent_only and normalized_county != "all")
+    next_offset = start_offset + primary_fetched if primary_fetched else None
+    has_more = bool(limit and primary_fetched == limit and not delinquent_only and normalized_county != "all")
 
     if dry_run:
         return {

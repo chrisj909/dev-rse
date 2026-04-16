@@ -33,6 +33,7 @@ COUNTY_CONFIGS: dict[str, dict[str, Any]] = {
             "INST_DATE1",
         ],
         "page_size": 1000,
+        "order_by_field": "OBJECTID",
         "default_where": "1=1",
         "delinquent_where": "TAX_DUE_CD='Y'",
         "updated_field": "Transcreate_Save",
@@ -59,6 +60,7 @@ COUNTY_CONFIGS: dict[str, dict[str, Any]] = {
             "AssdValue",
         ],
         "page_size": 2000,
+        "order_by_field": "OBJECTID",
         "default_where": (
             "PARCELID IS NOT NULL AND PARCELID <> '' "
             "AND (Street_Name IS NOT NULL OR OWNERNAME IS NOT NULL OR PROP_MAIL IS NOT NULL)"
@@ -273,6 +275,7 @@ async def fetch_all(
             params = {
                 "where": where_clause,
                 "outFields": ",".join(config["fields"]),
+                "orderByFields": f"{config['order_by_field']} ASC",
                 "resultOffset": offset,
                 "resultRecordCount": min(page_size, remaining) if remaining is not None else page_size,
                 "returnGeometry": "false",
@@ -313,6 +316,7 @@ async def fetch_delinquent_only(county: str = "shelby") -> list[dict]:
             params = {
                 "where": config["delinquent_where"],
                 "outFields": ",".join(config["fields"]),
+                "orderByFields": f"{config['order_by_field']} ASC",
                 "resultOffset": offset,
                 "resultRecordCount": page_size,
                 "returnGeometry": "false",
