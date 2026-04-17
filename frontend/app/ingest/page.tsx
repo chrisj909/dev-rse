@@ -227,9 +227,13 @@ export default function IngestPage() {
           throw new Error(summarizeErrorText(res.status, text));
         }
         const data = await res.json() as {
+          status?: string; error?: string;
           has_more: boolean; next_offset: number;
           total_properties: number; processed: number;
         };
+        if (data.status === 'error') {
+          throw new Error(data.error ?? 'Unknown error from cron endpoint');
+        }
         total = data.total_properties;
         offset = data.next_offset;
         setRescoreProgress(`Batch ${batch} — scored ${offset} / ${total} properties`);
