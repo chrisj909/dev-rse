@@ -7,7 +7,7 @@ This file documents the practical quirks of this repository's working environmen
 - Primary workspace: Codespaces at `/workspaces/dev-rse`
 - Git remote: `origin https://github.com/chrisj909/dev-rse`
 - Default branch: `main`
-- Deployed app: [https://dev-rse.vercel.app/](https://dev-rse.vercel.app/)
+- Deployed app: <https://dev-rse.vercel.app/>
 - Vercel deploys from repo state on `main`, not from uncommitted Codespaces changes
 - Supabase is the hosted database target
 
@@ -37,11 +37,6 @@ Implication:
 ## 4. Supabase Connectivity Quirk
 
 The direct Supabase DB host for this project resolved to IPv6 from Codespaces and was not reachable from this environment.
-
-Observed behavior:
-
-- direct host `db.<project>.supabase.co:5432` failed from Codespaces with `Network is unreachable`
-- pooler host `aws-1-us-east-1.pooler.supabase.com:6543` resolved to reachable IPv4 addresses
 
 Practical rule:
 

@@ -73,15 +73,20 @@ def make_signal_row(**flags) -> MagicMock:
     return signal
 
 
-def make_session(signal_row=None) -> AsyncMock:
+def make_session(signal_row=None, signal_rows: list | None = None) -> AsyncMock:
     """
     Return a mock async session whose execute() returns the given signal_row.
 
-    If signal_row is None, scalar_one_or_none() returns None (no row found).
+    signal_row  — used by score() single-property path (scalar_one_or_none)
+    signal_rows — used by score_batch() bulk-load path (scalars().all())
+    If signal_rows is None, the bulk load returns an empty list.
     """
     session = AsyncMock()
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = signal_row
+    mock_scalars = MagicMock()
+    mock_scalars.all.return_value = signal_rows if signal_rows is not None else []
+    mock_result.scalars.return_value = mock_scalars
     session.execute = AsyncMock(return_value=mock_result)
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
@@ -396,7 +401,7 @@ class TestScoringEngineBatch:
         with patch.object(ScoringEngine, "score", new_callable=AsyncMock) as mock_score:
             mock_score.return_value = {"score": 0, "rank": "C", "reasons": []}
             engine = ScoringEngine()
-            counts = await engine.score_batch(properties, AsyncMock())
+            counts = await engine.score_batch(properties, make_session())
 
         assert counts["processed"] == 7
 
@@ -414,7 +419,7 @@ class TestScoringEngineBatch:
         with patch.object(ScoringEngine, "score", new_callable=AsyncMock) as mock_score:
             mock_score.side_effect = score_results
             engine = ScoringEngine()
-            counts = await engine.score_batch(properties, AsyncMock())
+            counts = await engine.score_batch(properties, make_session())
 
         assert counts["rank_a"] == 3
         assert counts["rank_b"] == 2
@@ -429,7 +434,7 @@ class TestScoringEngineBatch:
 
         call_count = 0
 
-        async def score_with_error(prop, session):
+        async def score_with_error(prop, session, *, signal_row=None):
             nonlocal call_count
             call_count += 1
             if call_count == 3:
@@ -438,7 +443,7 @@ class TestScoringEngineBatch:
 
         engine = ScoringEngine()
         engine.score = score_with_error
-        counts = await engine.score_batch(properties, AsyncMock())
+        counts = await engine.score_batch(properties, make_session())
 
         assert counts["processed"] == 4  # 5 total - 1 error
         assert counts["errors"] == 1
@@ -448,12 +453,12 @@ class TestScoringEngineBatch:
         """Every property failing → processed=0, errors=N."""
         properties = [make_property(parcel_id=f"SC-{i}") for i in range(4)]
 
-        async def always_fail(prop, session):
+        async def always_fail(prop, session, *, signal_row=None):
             raise RuntimeError("always fails")
 
         engine = ScoringEngine()
         engine.score = always_fail
-        counts = await engine.score_batch(properties, AsyncMock())
+        counts = await engine.score_batch(properties, make_session())
 
         assert counts["processed"] == 0
         assert counts["errors"] == 4
@@ -467,7 +472,7 @@ class TestScoringEngineBatch:
         with patch.object(ScoringEngine, "score", new_callable=AsyncMock) as mock_score:
             mock_score.return_value = {"score": 75, "rank": "A", "reasons": ["tax_delinquent", "pre_foreclosure", "distress_combo"]}
             engine = ScoringEngine()
-            counts = await engine.score_batch(properties, AsyncMock())
+            counts = await engine.score_batch(properties, make_session())
 
         assert counts["rank_a"] == n
         assert counts["rank_b"] == 0
@@ -480,7 +485,7 @@ class TestScoringEngineBatch:
         engine = ScoringEngine()
         with patch.object(ScoringEngine, "score", new_callable=AsyncMock) as mock_score:
             mock_score.return_value = {"score": 0, "rank": "C", "reasons": []}
-            counts = await engine.score_batch([make_property()], AsyncMock())
+            counts = await engine.score_batch([make_property()], make_session())
 
         for key in ("processed", "rank_a", "rank_b", "rank_c", "errors"):
             assert key in counts, f"Missing key: {key}"
@@ -525,7 +530,7 @@ class TestScoringEngineBatch:
         ]
         properties = [make_property(parcel_id=f"SC-MIX-{i}") for i in range(len(signal_configs))]
 
-        async def score_by_index(prop, session):
+        async def score_by_index(prop, session, *, signal_row=None):
             idx = int(prop.parcel_id.split("-")[-1])
             signal_row = make_signal_row(**signal_configs[idx])
             flags = {
@@ -547,7 +552,7 @@ class TestScoringEngineBatch:
 
         engine = ScoringEngine()
         engine.score = score_by_index
-        counts = await engine.score_batch(properties, AsyncMock())
+        counts = await engine.score_batch(properties, make_session())
 
         assert counts["processed"] == 6
         assert counts["rank_c"] == 1  # score 0

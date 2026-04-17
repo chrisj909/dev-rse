@@ -25,7 +25,7 @@ interface IngestResult {
   error?: string;
 }
 
-const DEFAULT_BATCH_SIZE = 1000;
+const DEFAULT_BATCH_SIZE = 250;
 
 function summarizeErrorText(status: number, text: string): string {
   const trimmed = text.trim();

@@ -15,6 +15,7 @@ class TestRunSignalsCronAuth:
         monkeypatch.setattr("app.api.cron.settings.cron_secret", "secret123")
 
         result = MagicMock()
+        result.scalar.return_value = 0
         result.scalars.return_value.all.return_value = []
         mock_session.execute = AsyncMock(return_value=result)
         mock_session.commit = AsyncMock()
@@ -40,6 +41,7 @@ class TestRunSignalsCronAuth:
         monkeypatch.setattr("app.api.cron.settings.cron_secret", "secret123")
 
         result = MagicMock()
+        result.scalar.return_value = 0
         result.scalars.return_value.all.return_value = []
         mock_session.execute = AsyncMock(return_value=result)
         mock_session.commit = AsyncMock()

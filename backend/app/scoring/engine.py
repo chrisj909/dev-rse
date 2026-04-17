@@ -85,14 +85,18 @@ class ScoringEngine:
         self,
         prop: Property,
         session: AsyncSession,
+        *,
+        signal_row: Optional[Signal] = None,
     ) -> dict:
         """
         Score a single property: read its signals, calculate score/rank/reasons,
         and upsert the result to the scores table.
 
         Args:
-            prop:    SQLAlchemy Property ORM instance.
-            session: Active async database session.
+            prop:       SQLAlchemy Property ORM instance.
+            session:    Active async database session.
+            signal_row: Pre-loaded Signal row (avoids a DB round-trip when
+                        score_batch has already bulk-fetched signals).
 
         Returns:
             Dict with keys:
@@ -104,11 +108,11 @@ class ScoringEngine:
             If no signal row exists for this property, score is 0 / rank "C".
             The caller is responsible for committing the session after a batch.
         """
-        # Fetch the signal row for this property
-        result = await session.execute(
-            select(Signal).where(Signal.property_id == prop.id)
-        )
-        signal_row: Optional[Signal] = result.scalar_one_or_none()
+        if signal_row is None:
+            result = await session.execute(
+                select(Signal).where(Signal.property_id == prop.id)
+            )
+            signal_row = result.scalar_one_or_none()
 
         if signal_row is None:
             flags: dict[str, bool] = {}
@@ -152,8 +156,9 @@ class ScoringEngine:
         """
         Score a list of properties through the scoring engine.
 
-        Processes each property individually. The session is NOT committed
-        here — the caller should commit after each batch for safe rollback.
+        Bulk-loads all signal rows for the batch in one query so the per-property
+        score() call never issues an individual SELECT.  The session is NOT
+        committed here — the caller should commit after each batch.
 
         Args:
             properties: Sequence of SQLAlchemy Property ORM instances.
@@ -177,9 +182,20 @@ class ScoringEngine:
             "errors": 0,
         }
 
+        # Bulk-load all signal rows for this batch — one query instead of N.
+        property_ids = [prop.id for prop in properties]
+        signal_map: dict = {}
+        if property_ids:
+            signal_rows = (
+                await session.execute(
+                    select(Signal).where(Signal.property_id.in_(property_ids))
+                )
+            ).scalars().all()
+            signal_map = {row.property_id: row for row in signal_rows}
+
         for prop in properties:
             try:
-                result = await self.score(prop, session)
+                result = await self.score(prop, session, signal_row=signal_map.get(prop.id))
                 counts["processed"] += 1
                 rank_key = f"rank_{result['rank'].lower()}"
                 counts[rank_key] = counts.get(rank_key, 0) + 1
@@ -191,7 +207,6 @@ class ScoringEngine:
                     exc,
                 )
                 counts["errors"] += 1
-                # Continue — do not abort the entire batch on a single failure.
 
         return counts
 
