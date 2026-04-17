@@ -74,6 +74,9 @@ export default function IngestPage() {
   const [county, setCounty] = useState('all');
   const [limit, setLimit] = useState('100');
   const [cronSecret, setCronSecret] = useState('');
+  const [rescoring, setRescoring] = useState(false);
+  const [rescoreProgress, setRescoreProgress] = useState<string | null>(null);
+  const [rescoreError, setRescoreError] = useState<string | null>(null);
 
   async function requestIngest(params: URLSearchParams): Promise<IngestResult> {
     const res = await fetch(`${getClientApiBaseUrl()}/api/ingest/run?${params}`, {
@@ -197,6 +200,46 @@ export default function IngestPage() {
       setError(e instanceof Error ? e.message : 'Network error');
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function runRescore() {
+    if (!cronSecret) {
+      setRescoreError('Cron Secret is required to run a rescore.');
+      return;
+    }
+    setRescoring(true);
+    setRescoreProgress(null);
+    setRescoreError(null);
+    try {
+      let offset = 0;
+      let batch = 0;
+      let total = 0;
+      while (true) {
+        batch += 1;
+        const params = new URLSearchParams({ offset: String(offset) });
+        const res = await fetch(
+          `${getClientApiBaseUrl()}/api/cron/run-signals?${params}`,
+          { headers: { 'x-cron-secret': cronSecret } },
+        );
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(summarizeErrorText(res.status, text));
+        }
+        const data = await res.json() as {
+          has_more: boolean; next_offset: number;
+          total_properties: number; processed: number;
+        };
+        total = data.total_properties;
+        offset = data.next_offset;
+        setRescoreProgress(`Batch ${batch} — scored ${offset} / ${total} properties`);
+        if (!data.has_more || data.processed === 0) break;
+      }
+      setRescoreProgress(`Done — ${offset} / ${total} properties rescored across ${batch} batches.`);
+    } catch (e: unknown) {
+      setRescoreError(e instanceof Error ? e.message : 'Network error');
+    } finally {
+      setRescoring(false);
     }
   }
 
@@ -331,6 +374,25 @@ export default function IngestPage() {
           )}
         </div>
       )}
+
+      {/* Full Rescore */}
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-5 space-y-3">
+        <h2 className="text-white font-semibold text-sm uppercase tracking-wide">Rescore Existing Properties</h2>
+        <p className="text-gray-400 text-xs">Re-run signal detection and scoring on all properties already in the database without re-scraping ArcGIS. Requires Cron Secret above.</p>
+        <button
+          onClick={runRescore}
+          disabled={rescoring || running}
+          className={`w-full py-2 rounded-lg font-semibold text-sm text-white transition-colors ${rescoring || running ? 'bg-gray-600 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500'}`}
+        >
+          {rescoring ? 'Rescoring\u2026' : 'Run Full Rescore'}
+        </button>
+        {rescoreProgress && (
+          <p className="text-blue-300 text-xs">{rescoreProgress}</p>
+        )}
+        {rescoreError && (
+          <p className="text-red-300 text-xs">{rescoreError}</p>
+        )}
+      </div>
     </div>
   );
 }
