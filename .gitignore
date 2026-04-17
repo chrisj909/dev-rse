@@ -53,6 +53,12 @@ Thumbs.db
 *.swp
 *.swo
 
+# ── Claude Code ───────────────────────────────────────────────────────────────
+.claude/
+
+# ── TypeScript build cache ─────────────────────────────────────────────────────
+*.tsbuildinfo
+
 # ── Data files (large CSVs, raw downloads) ────────────────────────────────────
 data/raw/
 data/*.csv
