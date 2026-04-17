@@ -7,6 +7,7 @@ This file documents the practical quirks of this repository's working environmen
 - Primary workspace: Codespaces at `/workspaces/dev-rse`
 - Git remote: `origin https://github.com/chrisj909/dev-rse`
 - Default branch: `main`
+- Deployed app: [https://dev-rse.vercel.app/](https://dev-rse.vercel.app/)
 - Vercel deploys from repo state on `main`, not from uncommitted Codespaces changes
 - Supabase is the hosted database target
 
