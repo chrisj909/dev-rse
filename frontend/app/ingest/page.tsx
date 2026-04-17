@@ -10,7 +10,7 @@ interface IngestResult {
   upserted?: number;
   batches_completed?: number;
   signals?: { processed?: number; error?: string };
-  scoring?: { processed?: number; errors?: number };
+  scoring?: { processed?: number; errors?: number; error?: string };
   tax_delinquency?: { processed?: number; updated?: number; not_found?: number };
   retrieval?: {
     mode?: string;
@@ -310,6 +310,16 @@ export default function IngestPage() {
               <p className="text-gray-400 text-xs mt-1">Scored</p>
             </div>
           </div>
+          {(typeof result.signals === 'object' && result.signals && 'error' in result.signals) && (
+            <div className="bg-red-900/30 border border-red-700 rounded p-3 text-red-300 text-xs">
+              <span className="font-semibold">Signal error: </span>{String(result.signals.error)}
+            </div>
+          )}
+          {(typeof result.scoring === 'object' && result.scoring && 'error' in result.scoring) && (
+            <div className="bg-red-900/30 border border-red-700 rounded p-3 text-red-300 text-xs">
+              <span className="font-semibold">Scoring error: </span>{String((result.scoring as Record<string, unknown>).error)}
+            </div>
+          )}
           {result.sample && result.sample.length > 0 && (
             <div>
               <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">Sample (first 3)</p>

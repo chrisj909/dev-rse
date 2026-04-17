@@ -211,6 +211,7 @@ async def run_ingest(
     except Exception as e:
         await session.rollback()
         signal_result = {"error": str(e)}
+        score_result = {"error": str(e)}
 
     return {
         "status": "ok",
