@@ -175,7 +175,10 @@ async def run_ingest(
         property_keys.append((property_county, parcel_id))
         upserted += 1
 
-    await session.commit()
+    # Flush so property rows are visible within this transaction for the
+    # signal/scoring reload below, but hold the commit until all three
+    # layers (properties + signals + scores) are ready to land together.
+    await session.flush()
 
     signal_engine = SignalEngine()
     tax_service = TaxDelinquencyService()
