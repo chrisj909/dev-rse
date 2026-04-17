@@ -195,7 +195,8 @@ class ScoringEngine:
 
         for prop in properties:
             try:
-                result = await self.score(prop, session, signal_row=signal_map.get(prop.id))
+                async with session.begin_nested():
+                    result = await self.score(prop, session, signal_row=signal_map.get(prop.id))
                 counts["processed"] += 1
                 rank_key = f"rank_{result['rank'].lower()}"
                 counts[rank_key] = counts.get(rank_key, 0) + 1

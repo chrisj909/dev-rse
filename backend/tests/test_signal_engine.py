@@ -70,6 +70,7 @@ def make_session() -> AsyncMock:
     session.execute = AsyncMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
+    session.begin_nested = MagicMock(return_value=AsyncMock())
     return session
 
 

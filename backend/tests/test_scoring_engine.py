@@ -90,6 +90,7 @@ def make_session(signal_row=None, signal_rows: list | None = None) -> AsyncMock:
     session.execute = AsyncMock(return_value=mock_result)
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
+    session.begin_nested = MagicMock(return_value=AsyncMock())
     return session
 
 

@@ -306,7 +306,8 @@ class SignalEngine:
 
         for prop in properties:
             try:
-                flags = await self.process(prop, session)
+                async with session.begin_nested():
+                    flags = await self.process(prop, session)
                 counts["processed"] += 1
                 for signal_name, value in flags.items():
                     if value:
