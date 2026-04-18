@@ -142,6 +142,12 @@ export default function LeadsTable({
     navigate({ sort_by: key, sort_dir: nextDir, page: '1' });
   }
 
+  function navigateToLead(lead: Lead) {
+    const params = new URLSearchParams({ parcel_id: lead.parcel_id, county: lead.county });
+    if (scoringMode !== DEFAULT_SCORING_MODE) params.set('scoring_mode', scoringMode);
+    router.push(`/leads/${encodeURIComponent(lead.parcel_id)}?${params.toString()}`);
+  }
+
   function formatCurrency(value: number | null) {
     if (value == null) return '—';
     return new Intl.NumberFormat('en-US', {
@@ -385,8 +391,8 @@ export default function LeadsTable({
         </div>
       </form>
 
-      {/* Table */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+      {/* Desktop table */}
+      <div className="hidden md:block bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-gray-400 text-xs uppercase border-b border-gray-700">
@@ -428,16 +434,7 @@ export default function LeadsTable({
               leads.map(lead => (
                 <tr
                   key={`${lead.county}:${lead.parcel_id}`}
-                  onClick={() => {
-                    const params = new URLSearchParams({
-                      parcel_id: lead.parcel_id,
-                      county: lead.county,
-                    });
-                    if (scoringMode !== DEFAULT_SCORING_MODE) {
-                      params.set('scoring_mode', scoringMode);
-                    }
-                    router.push(`/property?${params.toString()}`);
-                  }}
+                  onClick={() => navigateToLead(lead)}
                   className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
                   <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>
@@ -456,6 +453,40 @@ export default function LeadsTable({
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {leads.length === 0 ? (
+          <div className="bg-gray-800 rounded-lg border border-gray-700 px-5 py-10 text-center text-gray-400">
+            {activeFilterCount > 0 ? 'No leads match your filters.' : 'No leads found.'}
+          </div>
+        ) : (
+          leads.map(lead => (
+            <div
+              key={`${lead.county}:${lead.parcel_id}`}
+              onClick={() => navigateToLead(lead)}
+              className="bg-gray-800 rounded-lg border border-gray-700 px-4 py-3 cursor-pointer active:bg-gray-700/70"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-white text-sm font-medium truncate">{lead.address || 'Address unavailable'}</p>
+                  <p className="text-gray-400 text-xs mt-0.5">{[lead.city, formatCounty(lead.county)].filter(Boolean).join(' · ')}</p>
+                  {lead.owner_name && <p className="text-gray-500 text-xs mt-0.5 truncate">{lead.owner_name}</p>}
+                </div>
+                <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                  <RankBadge rank={lead.rank} />
+                  <span className="text-white font-mono text-sm font-bold">{lead.score}</span>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
+                <span>{lead.signal_count} signal{lead.signal_count !== 1 ? 's' : ''}</span>
+                {lead.assessed_value != null && <span>{formatCurrency(lead.assessed_value)}</span>}
+                <span className="ml-auto">{lead.last_updated ? new Date(lead.last_updated).toLocaleDateString() : ''}</span>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Pagination */}

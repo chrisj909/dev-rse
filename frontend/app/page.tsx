@@ -105,29 +105,29 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Real Estate Signal Engine</h1>
+          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Real Estate Signal Engine</h1>
           <p className="text-slate-500 text-sm mt-1">Shelby + Jefferson Counties, AL — {getScoringModeLabel(scoringMode)} Dashboard</p>
         </div>
-        <div className="text-right">
-          <label className="block text-xs uppercase tracking-wide text-gray-500">Scoring Lens</label>
-          <select
-            value={scoringMode}
-            onChange={e => setMode(e.target.value)}
-            className="mt-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-slate-700"
-          >
-            {SCORING_MODES.map(mode => (
-              <option key={mode.value} value={mode.value}>{mode.label}</option>
-            ))}
-          </select>
-          {lastRefresh && (
-            <p className="text-xs text-gray-500">Last updated: {lastRefresh.toLocaleTimeString()}</p>
-          )}
-          <button onClick={fetchLeads} className="mt-1 text-xs text-blue-400 hover:text-blue-300 underline">
-            Refresh now
-          </button>
+        <div className="flex flex-row items-center gap-3 sm:flex-col sm:items-end sm:gap-1">
+          <div className="flex items-center gap-2">
+            <label className="text-xs uppercase tracking-wide text-gray-500">Lens</label>
+            <select
+              value={scoringMode}
+              onChange={e => setMode(e.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-slate-700"
+            >
+              {SCORING_MODES.map(mode => (
+                <option key={mode.value} value={mode.value}>{mode.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            {lastRefresh && <span>{lastRefresh.toLocaleTimeString()}</span>}
+            <button onClick={fetchLeads} className="text-blue-400 hover:text-blue-300 underline">Refresh</button>
+          </div>
         </div>
       </div>
 
@@ -163,7 +163,7 @@ export default function Dashboard() {
         {loading ? (
           <div className="p-5 space-y-3">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-10 bg-gray-700 rounded animate-pulse" />
+              <div key={i} className="h-14 bg-gray-700 rounded animate-pulse" />
             ))}
           </div>
         ) : top5.length === 0 ? (
@@ -172,41 +172,28 @@ export default function Dashboard() {
             <p className="text-sm mt-1">Connect a data source to begin ingesting properties and running signal detection.</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-gray-400 text-xs uppercase">
-                <th className="px-5 py-3 text-left">Address</th>
-                <th className="px-5 py-3 text-left">City</th>
-                <th className="px-5 py-3 text-right">Score</th>
-                <th className="px-5 py-3 text-center">Rank</th>
-                <th className="px-5 py-3 text-right">Signals</th>
-              </tr>
-            </thead>
-            <tbody>
-              {top5.map(lead => (
-                <tr
+          <div className="divide-y divide-gray-700">
+            {top5.map(lead => {
+              const params = new URLSearchParams({ parcel_id: lead.parcel_id, county: lead.county });
+              if (scoringMode !== DEFAULT_SCORING_MODE) params.set('scoring_mode', scoringMode);
+              return (
+                <div
                   key={`${lead.county}:${lead.parcel_id}`}
-                  onClick={() => {
-                    const params = new URLSearchParams({
-                      parcel_id: lead.parcel_id,
-                      county: lead.county,
-                    });
-                    if (scoringMode !== DEFAULT_SCORING_MODE) {
-                      params.set('scoring_mode', scoringMode);
-                    }
-                    window.location.href = `/property?${params.toString()}`;
-                  }}
-                  className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
+                  onClick={() => router.push(`/leads/${encodeURIComponent(lead.parcel_id)}?${params.toString()}`)}
+                  className="flex items-center gap-3 px-5 py-3 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
-                  <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>
-                  <td className="px-5 py-3 text-gray-300">{lead.city ?? '—'}</td>
-                  <td className="px-5 py-3 text-right text-white font-mono">{lead.score}</td>
-                  <td className="px-5 py-3 text-center"><RankBadge rank={lead.rank} /></td>
-                  <td className="px-5 py-3 text-right text-gray-300">{lead.signal_count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{lead.address || 'Address unavailable'}</p>
+                    <p className="text-gray-400 text-xs">{lead.city ?? '—'} · {lead.signal_count} signal{lead.signal_count !== 1 ? 's' : ''}</p>
+                  </div>
+                  <div className="flex-shrink-0 flex items-center gap-2">
+                    <span className="text-white font-mono text-sm">{lead.score}</span>
+                    <RankBadge rank={lead.rank} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

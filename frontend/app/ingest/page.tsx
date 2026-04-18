@@ -217,7 +217,7 @@ export default function IngestPage() {
       let total = 0;
       while (true) {
         batch += 1;
-        const params = new URLSearchParams({ offset: String(offset) });
+        const params = new URLSearchParams({ offset: String(offset), limit: '500' });
         const res = await fetch(
           `${getClientApiBaseUrl()}/api/cron/run-signals?${params}`,
           { headers: { 'x-cron-secret': cronSecret } },
@@ -248,7 +248,7 @@ export default function IngestPage() {
   }
 
   return (
-    <div className="p-6 max-w-2xl space-y-6">
+    <div className="p-4 sm:p-6 max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Data Ingestion</h1>
         <p className="text-slate-500 text-sm mt-1">Pull Shelby and Jefferson County property data and score leads</p>

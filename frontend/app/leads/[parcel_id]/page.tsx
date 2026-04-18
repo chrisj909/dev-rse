@@ -113,7 +113,7 @@ export default async function PropertyDetail({
   const hasDistressBonus = lead.score.reason.includes('distress_combo');
 
   return (
-    <div className="p-6 max-w-2xl space-y-6">
+    <div className="p-4 sm:p-6 max-w-2xl space-y-6">
       <div>
         <Link href={scoringMode === DEFAULT_SCORING_MODE ? '/leads' : `/leads?scoring_mode=${encodeURIComponent(scoringMode)}`} className="text-blue-400 hover:text-blue-300 text-sm">← Back to Leads</Link>
       </div>
