@@ -36,7 +36,7 @@ interface FilterState {
   page_size?: string;
 }
 
-type SortKey = 'score' | 'address' | 'city' | 'county' | 'assessed_value' | 'last_updated';
+type SortKey = 'score' | 'address' | 'city' | 'county' | 'assessed_value' | 'last_updated' | 'rank' | 'owner_name';
 type SortDir = 'asc' | 'desc';
 
 function formatCounty(county: string) {
@@ -399,14 +399,18 @@ export default function LeadsTable({
               <th className="px-5 py-3 text-left cursor-pointer hover:text-white" onClick={() => toggleSort('county')}>
                 County <SortIcon col="county" sortKey={sortKey} sortDir={sortDir} />
               </th>
-              <th className="px-5 py-3 text-left">Owner</th>
+              <th className="px-5 py-3 text-left cursor-pointer hover:text-white" onClick={() => toggleSort('owner_name')}>
+                Owner <SortIcon col="owner_name" sortKey={sortKey} sortDir={sortDir} />
+              </th>
               <th className="px-5 py-3 text-right cursor-pointer hover:text-white" onClick={() => toggleSort('assessed_value')}>
                 Property Value <SortIcon col="assessed_value" sortKey={sortKey} sortDir={sortDir} />
               </th>
               <th className="px-5 py-3 text-right cursor-pointer hover:text-white" onClick={() => toggleSort('score')}>
                 Score <SortIcon col="score" sortKey={sortKey} sortDir={sortDir} />
               </th>
-              <th className="px-5 py-3 text-center">Rank</th>
+              <th className="px-5 py-3 text-center cursor-pointer hover:text-white" onClick={() => toggleSort('rank')}>
+                Rank <SortIcon col="rank" sortKey={sortKey} sortDir={sortDir} />
+              </th>
               <th className="px-5 py-3 text-right">Signals</th>
               <th className="px-5 py-3 text-right cursor-pointer hover:text-white" onClick={() => toggleSort('last_updated')}>
                 Updated <SortIcon col="last_updated" sortKey={sortKey} sortDir={sortDir} />

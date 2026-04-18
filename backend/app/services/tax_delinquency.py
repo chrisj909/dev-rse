@@ -14,6 +14,7 @@ Design rules:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -157,10 +158,24 @@ class TaxDelinquencyService:
                 continue
 
             counts["processed"] += 1
-            wrote = await self.ingest_tax_delinquency(pid, is_delinquent, session)
-            if wrote:
-                counts["updated"] += 1
-            else:
-                counts["not_found"] += 1
+            last_exc: Exception | None = None
+            for attempt in range(3):
+                try:
+                    async with session.begin_nested():
+                        wrote = await self.ingest_tax_delinquency(pid, is_delinquent, session)
+                    if wrote:
+                        counts["updated"] += 1
+                    else:
+                        counts["not_found"] += 1
+                    last_exc = None
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+                    if "deadlock" in str(exc).lower() and attempt < 2:
+                        await asyncio.sleep(0.05 * (2 ** attempt))
+                        continue
+                    break
+            if last_exc is not None:
+                log.error("tax_delinquency batch: failed for property %s: %s", pid, last_exc)
 
         return counts

@@ -75,6 +75,7 @@ def _make_prop(
 def _make_session() -> AsyncMock:
     session = AsyncMock()
     session.execute = AsyncMock()
+    session.begin_nested = MagicMock(return_value=AsyncMock())
     return session
 
 

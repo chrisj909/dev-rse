@@ -39,6 +39,7 @@ def _make_session(scalar_result=None):
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = scalar_result
     session.execute = AsyncMock(return_value=mock_result)
+    session.begin_nested = MagicMock(return_value=AsyncMock())
     return session
 
 

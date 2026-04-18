@@ -52,6 +52,8 @@ _SORT_FIELDS = {
     "address": Property.address,
     "city": Property.city,
     "county": Property.county,
+    "rank": Score.rank,
+    "owner_name": Property.owner_name,
 }
 
 # Ordered list of all signal column names on the Signal ORM model.
@@ -344,7 +346,7 @@ def _build_sort_expression(sort_by: str, sort_dir: str) -> tuple:
     sort_field = _SORT_FIELDS.get(sort_by, Score.score)
     direction = sort_dir.lower()
     primary = sort_field.asc() if direction == "asc" else sort_field.desc()
-    if sort_by in {"assessed_value", "address", "city", "county", "last_updated"}:
+    if sort_by in {"assessed_value", "address", "city", "county", "last_updated", "rank", "owner_name"}:
         primary = primary.nulls_last()
     secondary = Score.score.desc()
     return primary, secondary

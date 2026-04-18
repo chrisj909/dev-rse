@@ -48,6 +48,41 @@ async function getLead(parcel_id: string, county?: string, scoringMode?: string)
   }
 }
 
+const SIGNAL_DESCRIPTIONS: Record<string, string> = {
+  absentee_owner: 'Owner mailing address differs from property address — likely a non-resident landlord or investor.',
+  long_term_owner: 'Property has been held by the same owner for 10+ years — potential motivation to sell.',
+  out_of_state_owner: 'Owner mails to an address outside Alabama — absentee investor.',
+  corporate_owner: 'Owner name resembles an LLC, trust, or other corporate entity.',
+  tax_delinquent: 'Property has unpaid property taxes — financial pressure on the owner.',
+  pre_foreclosure: 'A lis pendens or notice of default has been filed against this property.',
+  probate: 'Property is linked to a probate estate filing — heir-owned.',
+  eviction: 'An eviction filing has been recorded against this property.',
+  code_violation: 'An open code violation or nuisance complaint is on record.',
+};
+
+const SCORE_DRIVER_DESCRIPTIONS: Record<string, string> = {
+  absentee_owner: 'Absentee ownership contributes to score under this lens.',
+  long_term_owner: 'Long hold period contributes to score — more likely motivated to sell.',
+  out_of_state_owner: 'Out-of-state ownership is weighted for this scoring mode.',
+  corporate_owner: 'Corporate/entity ownership contributes to score.',
+  tax_delinquent: 'Tax delinquency is a high-weight distress signal.',
+  pre_foreclosure: 'Pre-foreclosure filing is a high-weight distress signal.',
+  probate: 'Probate status contributes to distress scoring.',
+  eviction: 'Active eviction filing contributes to distress scoring.',
+  code_violation: 'Open code violation contributes to distress scoring.',
+  distress_combo: 'Bonus applied when multiple distress signals are present simultaneously.',
+};
+
+function sourceUrl(county: string, parcelId: string): string | null {
+  if (county === 'shelby') {
+    return `https://maps.shelbyal.com/gisserver/rest/services`;
+  }
+  if (county === 'jefferson') {
+    return `https://jccgis.jccal.org/server/rest/services/Basemap/Parcels/MapServer/0/query?where=OBJECTID+IS+NOT+NULL&outFields=*&f=html`;
+  }
+  return null;
+}
+
 function RankBadge({ rank }: { rank: string }) {
   const colors: Record<string, string> = {
     A: 'bg-green-600 text-white',
@@ -144,7 +179,11 @@ export default async function PropertyDetail({
         ) : (
           <div className="flex flex-wrap gap-2">
             {activeSignals.map(([signalName]) => (
-              <span key={signalName} className="rounded-full bg-blue-600/20 px-3 py-1 text-sm text-blue-200">
+              <span
+                key={signalName}
+                title={SIGNAL_DESCRIPTIONS[signalName] ?? signalName}
+                className="rounded-full bg-blue-600/20 px-3 py-1 text-sm text-blue-200 cursor-help"
+              >
                 {signalName.replaceAll('_', ' ')}
               </span>
             ))}
@@ -159,18 +198,39 @@ export default async function PropertyDetail({
         ) : (
           <div className="flex flex-wrap gap-2">
             {scoreDrivers.map(reason => (
-              <span key={reason} className="rounded-full bg-emerald-600/15 px-3 py-1 text-sm text-emerald-200">
+              <span
+                key={reason}
+                title={SCORE_DRIVER_DESCRIPTIONS[reason] ?? reason}
+                className="rounded-full bg-emerald-600/15 px-3 py-1 text-sm text-emerald-200 cursor-help"
+              >
                 {reason.replaceAll('_', ' ')}
               </span>
             ))}
             {hasDistressBonus ? (
-              <span className="rounded-full bg-amber-500/15 px-3 py-1 text-sm text-amber-200">
+              <span
+                title={SCORE_DRIVER_DESCRIPTIONS['distress_combo']}
+                className="rounded-full bg-amber-500/15 px-3 py-1 text-sm text-amber-200 cursor-help"
+              >
                 distress combo bonus
               </span>
             ) : null}
           </div>
         )}
       </div>
+
+      {sourceUrl(lead.county, lead.parcel_id) && (
+        <div className="bg-gray-800 rounded-lg border border-gray-700 p-5">
+          <h2 className="text-white font-semibold text-sm uppercase tracking-wide mb-3">Source Data</h2>
+          <a
+            href={sourceUrl(lead.county, lead.parcel_id)!}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:text-blue-300 text-sm underline"
+          >
+            {lead.county === 'shelby' ? 'Shelby County GIS Portal' : 'Jefferson County GIS Portal'} →
+          </a>
+        </div>
+      )}
     </div>
   );
 }
