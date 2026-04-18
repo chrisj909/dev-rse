@@ -464,6 +464,28 @@ export default function LeadsTable({
         </table>
       </div>
 
+      {/* Mobile sort bar */}
+      <div className="md:hidden flex items-center gap-2 overflow-x-auto pb-1">
+        <span className="text-gray-400 text-xs flex-shrink-0">Sort:</span>
+        {([
+          { key: 'score', label: 'Score' },
+          { key: 'rank', label: 'Rank' },
+          { key: 'assessed_value', label: 'Value' },
+          { key: 'owner_name', label: 'Owner' },
+          { key: 'last_updated', label: 'Updated' },
+        ] as { key: SortKey; label: string }[]).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => toggleSort(key)}
+            className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              sortKey === key ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'
+            }`}
+          >
+            {label}{sortKey === key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+          </button>
+        ))}
+      </div>
+
       {/* Mobile card list */}
       <div className="md:hidden space-y-2">
         {leads.length === 0 ? (

@@ -421,22 +421,25 @@ export default function IngestPage() {
       </div>
 
       {/* DB Status */}
-      <div className="border border-gray-700 rounded-lg px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-gray-400">
-        <span className="font-semibold text-gray-300 uppercase tracking-wide mr-1">DB</span>
+      <div className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-xs text-gray-400">
+        <div className="flex items-center justify-between mb-2">
+          <span className="font-semibold text-gray-300 uppercase tracking-wide text-xs">Database</span>
+          <button onClick={fetchStats} className="text-blue-400 hover:text-blue-300">↻</button>
+        </div>
         {statsLoading ? (
           <span className="text-gray-500">loading…</span>
         ) : dbStats ? (
-          <>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
             <span><span className="text-white font-medium">{dbStats.properties.toLocaleString()}</span> properties</span>
             <span><span className="text-white font-medium">{dbStats.signals.toLocaleString()}</span> signals</span>
-            {Object.entries(dbStats.scores).map(([mode, count]) => (
-              <span key={mode}><span className="text-white font-medium">{count.toLocaleString()}</span> {mode} scores</span>
-            ))}
-          </>
+            {Object.entries(dbStats.scores).map(([mode, count]) => {
+              const label = mode === 'owner_occupant' ? 'Owner' : mode === 'investor' ? 'Investor' : 'Broad';
+              return <span key={mode}><span className="text-white font-medium">{(count as number).toLocaleString()}</span> {label} scores</span>;
+            })}
+          </div>
         ) : (
           <span className="text-gray-500">unavailable</span>
         )}
-        <button onClick={fetchStats} className="ml-auto text-blue-400 hover:text-blue-300">↻</button>
       </div>
     </div>
   );
