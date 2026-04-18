@@ -269,154 +269,172 @@ export default function IngestPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-2xl space-y-6">
+    <div className="p-4 sm:p-6 max-w-2xl space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Data Ingestion</h1>
         <p className="text-slate-500 text-sm mt-1">Pull Shelby and Jefferson County property data and score leads</p>
       </div>
 
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-5 space-y-3">
-        <h2 className="text-white font-semibold text-sm uppercase tracking-wide mb-3">Active Sources</h2>
-        <div className="flex items-center gap-3">
-          <span className="w-2 h-2 rounded-full bg-green-400" />
+      {/* Active Sources */}
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Active Sources</p>
+        {[
+          { color: 'bg-green-400', name: 'Shelby County ArcGIS', detail: '106,000+ parcels · owner, address, tax status, deed date' },
+          { color: 'bg-cyan-400', name: 'Jefferson County ArcGIS', detail: 'Public parcel map service · owner, mailing, address, assessed value' },
+          { color: 'bg-yellow-400', name: 'GovEase Tax Lien Auction', detail: 'Shelby overlay only; Jefferson feed not publicly exposed' },
+        ].map(s => (
+          <div key={s.name} className="flex items-center gap-3">
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${s.color}`} />
+            <div>
+              <p className="text-white text-sm font-medium">{s.name}</p>
+              <p className="text-gray-500 text-xs">{s.detail}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Options */}
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 space-y-4">
+        <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Options</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="flex items-center gap-3 cursor-pointer rounded-lg border border-gray-700 bg-gray-900/50 px-4 py-3 hover:border-gray-600 transition-colors">
+            <input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} className="w-4 h-4 rounded accent-blue-500 flex-shrink-0" />
+            <div>
+              <p className="text-white text-sm font-medium">Dry run</p>
+              <p className="text-gray-500 text-xs">Preview only, no DB writes</p>
+            </div>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer rounded-lg border border-gray-700 bg-gray-900/50 px-4 py-3 hover:border-gray-600 transition-colors">
+            <input type="checkbox" checked={delinquentOnly} onChange={e => setDelinquentOnly(e.target.checked)} className="w-4 h-4 rounded accent-blue-500 flex-shrink-0" />
+            <div>
+              <p className="text-white text-sm font-medium">Delinquent only</p>
+              <p className="text-gray-500 text-xs">Faster · tax-delinquent parcels only</p>
+            </div>
+          </label>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <p className="text-white text-sm font-medium">Shelby County ArcGIS</p>
-            <p className="text-gray-400 text-xs">106,000+ parcels · owner, address, tax status, deed date</p>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">County Scope</label>
+            <select value={county} onChange={e => setCounty(e.target.value)} className="w-full bg-gray-900/50 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors">
+              <option value="all">All supported counties</option>
+              <option value="shelby">Shelby County</option>
+              <option value="jefferson">Jefferson County</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">Record Limit</label>
+            <input type="number" value={limit} onChange={e => setLimit(e.target.value)} placeholder="All records (auto-batch)" className="w-full bg-gray-900/50 border border-gray-700 text-white placeholder-gray-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors" />
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="w-2 h-2 rounded-full bg-cyan-400" />
-          <div>
-            <p className="text-white text-sm font-medium">Jefferson County ArcGIS</p>
-            <p className="text-gray-400 text-xs">Public parcel map service · owner, mailing, address, assessed value</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="w-2 h-2 rounded-full bg-yellow-400" />
-          <div>
-            <p className="text-white text-sm font-medium">GovEase Tax Lien Auction</p>
-            <p className="text-gray-400 text-xs">Shelby overlay only at the moment; Jefferson feed not publicly exposed there</p>
-          </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wide">Cron Secret</label>
+          <input type="password" value={cronSecret} onChange={e => setCronSecret(e.target.value)} placeholder="From Vercel environment variables" className="w-full bg-gray-900/50 border border-gray-700 text-white placeholder-gray-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-colors" />
+          <p className="text-gray-600 text-xs mt-1.5">Required for live writes and rescore. Start with limit 100 to test.</p>
         </div>
       </div>
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-5 space-y-4">
-        <h2 className="text-white font-semibold text-sm uppercase tracking-wide">Options</h2>
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input type="checkbox" checked={dryRun} onChange={e => setDryRun(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
-          <div>
-            <p className="text-white text-sm">Dry run (preview only)</p>
-            <p className="text-gray-400 text-xs">Fetch data but don&apos;t write to database</p>
-          </div>
-        </label>
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input type="checkbox" checked={delinquentOnly} onChange={e => setDelinquentOnly(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
-          <div>
-            <p className="text-white text-sm">Delinquent only (faster)</p>
-            <p className="text-gray-400 text-xs">Only fetch tax-delinquent properties from sources that publish delinquency fields</p>
-          </div>
-        </label>
-        <div>
-          <label className="block text-white text-sm mb-1">County Scope</label>
-          <select value={county} onChange={e => setCounty(e.target.value)} className="w-full bg-gray-700 border border-gray-600 text-white rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500">
-            <option value="all">All supported counties</option>
-            <option value="shelby">Shelby County</option>
-            <option value="jefferson">Jefferson County</option>
-          </select>
-          <p className="text-gray-400 text-xs mt-1">Use Jefferson for parcel expansion research or all counties for a combined ingest.</p>
-        </div>
-        <div>
-          <label className="block text-white text-sm mb-1">Record limit</label>
-          <input type="number" value={limit} onChange={e => setLimit(e.target.value)} placeholder="Leave blank for all records" className="w-full bg-gray-700 border border-gray-600 text-white placeholder-gray-500 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
-          <p className="text-gray-400 text-xs mt-1">Start with 100 to test. Leave blank on a single-county live ingest to auto-batch the full run in 1,000-record chunks.</p>
-        </div>
-        <div>
-          <label className="block text-white text-sm mb-1">Cron Secret</label>
-          <input type="password" value={cronSecret} onChange={e => setCronSecret(e.target.value)} placeholder="From Vercel environment variables" className="w-full bg-gray-700 border border-gray-600 text-white placeholder-gray-500 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" />
-        </div>
-      </div>
-      <button onClick={runIngest} disabled={running} className={`w-full py-3 rounded-lg font-semibold text-white transition-colors ${running ? 'bg-gray-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500'}`}>
+
+      {/* Run button */}
+      <button
+        onClick={runIngest}
+        disabled={running}
+        className={`w-full py-3 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 ${
+          running ? 'bg-blue-700/70 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 active:scale-[0.99]'
+        }`}
+      >
+        {running && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
         {running ? 'Running ingestion\u2026' : 'Run Ingestion'}
       </button>
+
+      {/* Progress */}
       {progress && (
-        <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4 text-blue-200 text-sm">
-          <p className="font-semibold mb-1">Progress</p>
-          <p>{progress}</p>
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+            <p className="text-gray-300 text-xs font-semibold uppercase tracking-wide">In Progress</p>
+          </div>
+          <p className="text-gray-400 text-sm">{progress}</p>
         </div>
       )}
+
+      {/* Error */}
       {error && (
-        <div className="bg-red-900/40 border border-red-700 rounded-lg p-4 text-red-300 text-sm">
-          <p className="font-semibold mb-1">Error</p><p>{error}</p>
+        <div className="bg-gray-800 border border-red-800 rounded-xl p-4">
+          <p className="text-red-400 text-xs font-semibold uppercase tracking-wide mb-1">Error</p>
+          <p className="text-red-300 text-sm">{error}</p>
         </div>
       )}
+
+      {/* Result */}
       {result && (
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-5 space-y-4">
-          <div className="flex items-center gap-2">
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 space-y-4">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="w-2 h-2 rounded-full bg-green-400" />
             <h2 className="text-white font-semibold">{result.status === 'dry_run' ? 'Dry Run Complete' : 'Ingestion Complete'}</h2>
-            {result.county && <span className="text-gray-400 text-xs">scope: {result.county}</span>}
-            {result.batches_completed ? <span className="text-gray-400 text-xs">batches: {result.batches_completed}</span> : null}
-            {result.elapsed_seconds && <span className="text-gray-400 text-xs ml-auto">{result.elapsed_seconds}s</span>}
+            {result.county && <span className="rounded-full bg-gray-700 px-2 py-0.5 text-gray-400 text-xs">{result.county}</span>}
+            {result.batches_completed ? <span className="rounded-full bg-gray-700 px-2 py-0.5 text-gray-400 text-xs">{result.batches_completed} batches</span> : null}
+            {result.elapsed_seconds && <span className="ml-auto text-gray-500 text-xs">{result.elapsed_seconds}s</span>}
           </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="bg-gray-700 rounded p-3 text-center">
-              <p className="text-2xl font-bold text-white">{result.fetched ?? '\u2014'}</p>
-              <p className="text-gray-400 text-xs mt-1">Fetched</p>
-            </div>
-            <div className="bg-gray-700 rounded p-3 text-center">
-              <p className="text-2xl font-bold text-white">{result.upserted ?? '\u2014'}</p>
-              <p className="text-gray-400 text-xs mt-1">Upserted</p>
-            </div>
-            <div className="bg-gray-700 rounded p-3 text-center">
-              <p className="text-2xl font-bold text-green-400">
-                {typeof result.signals === 'object' && result.signals && 'processed' in result.signals ? result.signals.processed : '\u2014'}
-              </p>
-              <p className="text-gray-400 text-xs mt-1">Signals run</p>
-            </div>
-            <div className="bg-gray-700 rounded p-3 text-center">
-              <p className="text-2xl font-bold text-blue-400">
-                {typeof result.scoring === 'object' && result.scoring && 'processed' in result.scoring ? result.scoring.processed : '\u2014'}
-              </p>
-              <p className="text-gray-400 text-xs mt-1">Scored</p>
-            </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: 'Fetched', value: result.fetched, color: 'text-white' },
+              { label: 'Upserted', value: result.upserted, color: 'text-white' },
+              { label: 'Signals', value: typeof result.signals === 'object' && result.signals && 'processed' in result.signals ? result.signals.processed : undefined, color: 'text-green-400' },
+              { label: 'Scored', value: typeof result.scoring === 'object' && result.scoring && 'processed' in result.scoring ? result.scoring.processed : undefined, color: 'text-blue-400' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="bg-gray-700/60 rounded-lg p-3 text-center">
+                <p className={`text-2xl font-bold font-mono ${color}`}>{value ?? '\u2014'}</p>
+                <p className="text-gray-500 text-xs mt-1">{label}</p>
+              </div>
+            ))}
           </div>
           {(typeof result.signals === 'object' && result.signals && 'error' in result.signals) && (
-            <div className="bg-red-900/30 border border-red-700 rounded p-3 text-red-300 text-xs">
+            <div className="border border-red-800 rounded-lg p-3 text-red-300 text-xs">
               <span className="font-semibold">Signal error: </span>{String(result.signals.error)}
             </div>
           )}
           {(typeof result.scoring === 'object' && result.scoring && 'error' in result.scoring) && (
-            <div className="bg-red-900/30 border border-red-700 rounded p-3 text-red-300 text-xs">
+            <div className="border border-red-800 rounded-lg p-3 text-red-300 text-xs">
               <span className="font-semibold">Scoring error: </span>{String((result.scoring as Record<string, unknown>).error)}
             </div>
           )}
           {result.sample && result.sample.length > 0 && (
             <div>
-              <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">Sample (first 3)</p>
-              <pre className="bg-gray-900 rounded p-3 text-xs text-green-300 overflow-x-auto">{JSON.stringify(result.sample.slice(0, 3), null, 2)}</pre>
+              <p className="text-gray-500 text-xs uppercase tracking-wide mb-2">Sample (first 3)</p>
+              <pre className="bg-gray-900 rounded-lg p-3 text-xs text-green-300 overflow-x-auto">{JSON.stringify(result.sample.slice(0, 3), null, 2)}</pre>
             </div>
           )}
           {result.status !== 'dry_run' && (
-            <a href="/leads" className="block text-center text-blue-400 hover:text-blue-300 text-sm underline">View leads \u2192</a>
+            <a href="/leads" className="block text-center text-blue-400 hover:text-blue-300 text-sm">View leads →</a>
           )}
         </div>
       )}
 
       {/* Full Rescore */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-5 space-y-3">
-        <h2 className="text-white font-semibold text-sm uppercase tracking-wide">Rescore Existing Properties</h2>
-        <p className="text-gray-400 text-xs">Re-run signal detection and scoring on all properties already in the database without re-scraping ArcGIS. Requires Cron Secret above.</p>
-        <button
-          onClick={runRescore}
-          disabled={rescoring || running}
-          className={`w-full py-2 rounded-lg font-semibold text-sm text-white transition-colors ${rescoring || running ? 'bg-gray-600 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500'}`}
-        >
-          {rescoring ? 'Rescoring\u2026' : 'Run Full Rescore'}
-        </button>
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 space-y-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Rescore Existing Properties</p>
+            <p className="text-gray-500 text-xs mt-1">Re-run signal detection and scoring without re-scraping ArcGIS. Requires Cron Secret.</p>
+          </div>
+          <button
+            onClick={runRescore}
+            disabled={rescoring || running}
+            className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all ${
+              rescoring || running ? 'bg-indigo-700/50 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99]'
+            }`}
+          >
+            {rescoring && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+            {rescoring ? 'Rescoring\u2026' : 'Run Rescore'}
+          </button>
+        </div>
         {rescoreProgress && (
-          <p className="text-blue-300 text-xs">{rescoreProgress}</p>
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+            <p className="text-indigo-300 text-xs">{rescoreProgress}</p>
+          </div>
         )}
         {rescoreError && (
-          <p className="text-red-300 text-xs">{rescoreError}</p>
+          <p className="text-red-400 text-xs">{rescoreError}</p>
         )}
       </div>
 
