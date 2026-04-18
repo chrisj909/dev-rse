@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import { getClientApiBaseUrl } from '../../lib/api';
 
@@ -23,6 +23,12 @@ interface IngestResult {
   elapsed_seconds?: number;
   sample?: unknown[];
   error?: string;
+}
+
+interface DbStats {
+  properties: number;
+  signals: number;
+  scores: Record<string, number>;
 }
 
 const DEFAULT_BATCH_SIZE = 250;
@@ -77,6 +83,19 @@ export default function IngestPage() {
   const [rescoring, setRescoring] = useState(false);
   const [rescoreProgress, setRescoreProgress] = useState<string | null>(null);
   const [rescoreError, setRescoreError] = useState<string | null>(null);
+  const [dbStats, setDbStats] = useState<DbStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await fetch(`${getClientApiBaseUrl()}/api/health/stats`);
+      if (res.ok) setDbStats(await res.json());
+    } catch { /* non-critical */ } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchStats(); }, [fetchStats]);
 
   async function requestIngest(params: URLSearchParams): Promise<IngestResult> {
     const res = await fetch(`${getClientApiBaseUrl()}/api/ingest/run?${params}`, {
@@ -200,6 +219,7 @@ export default function IngestPage() {
       setError(e instanceof Error ? e.message : 'Network error');
     } finally {
       setRunning(false);
+      fetchStats();
     }
   }
 
@@ -244,6 +264,7 @@ export default function IngestPage() {
       setRescoreError(e instanceof Error ? e.message : 'Network error');
     } finally {
       setRescoring(false);
+      fetchStats();
     }
   }
 
@@ -253,6 +274,53 @@ export default function IngestPage() {
         <h1 className="text-2xl font-bold text-slate-900">Data Ingestion</h1>
         <p className="text-slate-500 text-sm mt-1">Pull Shelby and Jefferson County property data and score leads</p>
       </div>
+
+      {/* DB Status */}
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-white font-semibold text-sm uppercase tracking-wide">Database Status</h2>
+          <button onClick={fetchStats} className="text-xs text-blue-400 hover:text-blue-300 underline">Refresh</button>
+        </div>
+        {statsLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-gray-700 rounded animate-pulse" />)}
+          </div>
+        ) : dbStats ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-gray-700 rounded p-3 text-center">
+              <p className="text-xl font-bold text-white">{dbStats.properties.toLocaleString()}</p>
+              <p className="text-gray-400 text-xs mt-1">Properties</p>
+            </div>
+            <div className="bg-gray-700 rounded p-3 text-center">
+              <p className={`text-xl font-bold ${dbStats.signals < dbStats.properties ? 'text-yellow-400' : 'text-white'}`}>
+                {dbStats.signals.toLocaleString()}
+              </p>
+              <p className="text-gray-400 text-xs mt-1">Signals</p>
+              {dbStats.signals < dbStats.properties && (
+                <p className="text-yellow-400 text-xs">{(dbStats.properties - dbStats.signals).toLocaleString()} missing</p>
+              )}
+            </div>
+            {(['broad', 'owner_occupant', 'investor'] as const).map(mode => {
+              const count = dbStats.scores[mode] ?? 0;
+              const label = mode === 'broad' ? 'Broad' : mode === 'owner_occupant' ? 'Owner-Occ' : 'Investor';
+              return (
+                <div key={mode} className="bg-gray-700 rounded p-3 text-center">
+                  <p className={`text-xl font-bold ${count < dbStats.properties ? 'text-yellow-400' : 'text-blue-400'}`}>
+                    {count.toLocaleString()}
+                  </p>
+                  <p className="text-gray-400 text-xs mt-1">Scores · {label}</p>
+                  {count < dbStats.properties && (
+                    <p className="text-yellow-400 text-xs">{(dbStats.properties - count).toLocaleString()} missing</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-gray-400 text-sm">Could not load stats.</p>
+        )}
+      </div>
+
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-5 space-y-3">
         <h2 className="text-white font-semibold text-sm uppercase tracking-wide mb-3">Active Sources</h2>
         <div className="flex items-center gap-3">
