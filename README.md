@@ -113,6 +113,8 @@ vercel.json          Deployment routing config
 | `/ingest` | Ingest runner, rescore tool, live DB status |
 | `/leads` | Searchable, sortable, paginated lead feed with collapsible advanced search |
 | `/property?parcel_id=...` | Property detail — signals, score drivers, Maps link, GIS source link |
+| `/lists` | Property lists — create/delete named lists, add/remove properties, export CSV |
+| `/auth` | Sign In / Create Account (email + password via Supabase) |
 
 ## 5. Data Flow
 
@@ -164,6 +166,30 @@ Current fields: `absentee_owner`, `long_term_owner`, `out_of_state_owner`, `corp
 Weighted output of the scoring pipeline. One row per `(property_id, scoring_mode)`.
 
 Key fields: `score`, `rank`, `reason` (list of contributing signal keys), `scoring_mode`, `scoring_version`, `last_updated`
+
+### 6.4 `saved_searches` (user data)
+
+Named filter snapshots owned by a Supabase Auth user. One row per search.
+
+Key fields: `id`, `user_id`, `name`, `filters` (JSONB — stores all active lead-feed query parameters), `created_at`
+
+Protected by RLS: users can only read and write their own rows.
+
+### 6.5 `property_lists` (user data)
+
+Named property collections owned by a Supabase Auth user.
+
+Key fields: `id`, `user_id`, `name`, `created_at`
+
+Protected by RLS: users can only read and write their own rows.
+
+### 6.6 `property_list_items` (user data)
+
+Join table between a property list and a parcel. Stores the `county` + `parcel_id` pair so the list remains valid even if the `properties` UUID changes.
+
+Key fields: `id`, `list_id`, `county`, `parcel_id`, `added_at`
+
+Protected by RLS: users can only access items belonging to lists they own.
 
 ## 7. Scoring Design
 
@@ -266,11 +292,36 @@ The last example: `25 + 30 + 20 distress combo bonus = 75`.
 - **Rescore tool**: triggers the full signal + scoring pipeline over all existing properties via the cron endpoint; inline spinner and progress tracker
 - **DB Status bar**: live counts for properties, signals, and per-mode scores with a refresh button
 
-### 8.5 Mobile Layout
+### 8.5 User Accounts (`/auth`, `/lists`)
 
-- Fixed top bar on mobile with app title
-- Bottom tab navigation (Dashboard / Leads / Ingest)
-- Desktop gets a persistent left sidebar
+User accounts are powered by Supabase Auth (email + password). The Supabase browser client handles all user-data CRUD directly from the browser using Row Level Security — no user data flows through the FastAPI backend.
+
+**Authentication:**
+
+- Sign In / Create Account page at `/auth`
+- `AuthProvider` React context wraps the app and exposes `user`, `signIn`, `signUp`, `signOut`
+- Session persists across page refreshes via Supabase's built-in local storage
+
+**Saved Searches:**
+
+- Save any active filter combination under a user-chosen name from the lead feed header
+- Load a saved search to restore all filters instantly
+- Export a saved search to CSV (calls the FastAPI leads API with saved filters)
+- All saved searches are private to the authenticated user
+
+**Property Lists:**
+
+- Create named lists and add properties from the property detail page via the "Add to List" button
+- The button shows a checkmark dropdown listing all lists; click to toggle membership
+- View all lists at `/lists`: expand a list to see all properties with address, owner, score, and rank
+- Remove individual properties from a list or delete the entire list
+- Export any list to CSV including joined property data
+
+### 8.6 Mobile Layout
+
+- Fixed top bar on mobile with app title and sign-in / sign-out control
+- Bottom tab navigation (Dashboard / Leads / Lists / Ingest)
+- Desktop gets a persistent left sidebar with user email and sign-out link
 - All pages use responsive padding and stacked layouts on small screens
 
 ## 9. Backend Reliability
@@ -378,6 +429,10 @@ Important: Supabase pooled connections behave like PgBouncer transaction pooling
 | `NEXT_PUBLIC_API_URL` | Browser-facing API base override |
 | `SCORING_VERSION` | Score version tag |
 | `CRON_SECRET` | Auth for ingest and cron admin flows |
+| `SUPABASE_URL` | Supabase project URL (backend) |
+| `SUPABASE_ANON_KEY` | Supabase anon key (backend) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (browser) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (browser) |
 | `WEBHOOK_URL` / `WEBHOOK_SECRET` | Webhook integration |
 | `WEBHOOK_SCORE_THRESHOLD` | Webhook trigger threshold |
 

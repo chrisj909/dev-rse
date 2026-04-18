@@ -7,10 +7,9 @@ import { usePropertyLists } from '@/hooks/usePropertyLists';
 interface Props {
   county: string;
   parcelId: string;
-  variant?: 'button' | 'compact';
 }
 
-export default function AddToListButton({ county, parcelId, variant = 'button' }: Props) {
+export default function AddToListButton({ county, parcelId }: Props) {
   const { user } = useAuth();
   const { lists, createList, addToList, removeFromList, isInAnyList, getListItems } = usePropertyLists();
   const [open, setOpen] = useState(false);

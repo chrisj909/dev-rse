@@ -118,7 +118,7 @@ export default function ListsPage() {
   const [newListName, setNewListName] = useState('');
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { refresh(); }, [refresh]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
