@@ -23,6 +23,7 @@ Sprint 7 — Pluggable registry:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -305,17 +306,27 @@ class SignalEngine:
         counts["processed"] = 0
 
         for prop in properties:
-            try:
-                async with session.begin_nested():
-                    flags = await self.process(prop, session)
-                counts["processed"] += 1
-                for signal_name, value in flags.items():
-                    if value:
-                        counts[signal_name] = counts.get(signal_name, 0) + 1
-            except Exception as exc:  # noqa: BLE001
+            last_exc: Exception | None = None
+            for attempt in range(3):
+                try:
+                    async with session.begin_nested():
+                        flags = await self.process(prop, session)
+                    counts["processed"] += 1
+                    for signal_name, value in flags.items():
+                        if value:
+                            counts[signal_name] = counts.get(signal_name, 0) + 1
+                    last_exc = None
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    last_exc = exc
+                    if "deadlock" in str(exc).lower() and attempt < 2:
+                        await asyncio.sleep(0.05 * (2 ** attempt))
+                        continue
+                    break
+            if last_exc is not None:
                 log.error(
                     "Failed to process property %s (parcel=%s): %s",
-                    prop.id, prop.parcel_id, exc,
+                    prop.id, prop.parcel_id, last_exc,
                 )
 
         return counts
