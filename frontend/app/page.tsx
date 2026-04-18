@@ -179,7 +179,7 @@ export default function Dashboard() {
               return (
                 <div
                   key={`${lead.county}:${lead.parcel_id}`}
-                  onClick={() => router.push(`/leads/${encodeURIComponent(lead.parcel_id)}?${params.toString()}`)}
+                  onClick={() => router.push(`/property?${params.toString()}`)}
                   className="flex items-center gap-3 px-5 py-3 hover:bg-gray-700/50 cursor-pointer transition-colors"
                 >
                   <div className="flex-1 min-w-0">

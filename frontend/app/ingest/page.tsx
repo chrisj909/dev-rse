@@ -275,52 +275,6 @@ export default function IngestPage() {
         <p className="text-slate-500 text-sm mt-1">Pull Shelby and Jefferson County property data and score leads</p>
       </div>
 
-      {/* DB Status */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-white font-semibold text-sm uppercase tracking-wide">Database Status</h2>
-          <button onClick={fetchStats} className="text-xs text-blue-400 hover:text-blue-300 underline">Refresh</button>
-        </div>
-        {statsLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-gray-700 rounded animate-pulse" />)}
-          </div>
-        ) : dbStats ? (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-gray-700 rounded p-3 text-center">
-              <p className="text-xl font-bold text-white">{dbStats.properties.toLocaleString()}</p>
-              <p className="text-gray-400 text-xs mt-1">Properties</p>
-            </div>
-            <div className="bg-gray-700 rounded p-3 text-center">
-              <p className={`text-xl font-bold ${dbStats.signals < dbStats.properties ? 'text-yellow-400' : 'text-white'}`}>
-                {dbStats.signals.toLocaleString()}
-              </p>
-              <p className="text-gray-400 text-xs mt-1">Signals</p>
-              {dbStats.signals < dbStats.properties && (
-                <p className="text-yellow-400 text-xs">{(dbStats.properties - dbStats.signals).toLocaleString()} missing</p>
-              )}
-            </div>
-            {(['broad', 'owner_occupant', 'investor'] as const).map(mode => {
-              const count = dbStats.scores[mode] ?? 0;
-              const label = mode === 'broad' ? 'Broad' : mode === 'owner_occupant' ? 'Owner-Occ' : 'Investor';
-              return (
-                <div key={mode} className="bg-gray-700 rounded p-3 text-center">
-                  <p className={`text-xl font-bold ${count < dbStats.properties ? 'text-yellow-400' : 'text-blue-400'}`}>
-                    {count.toLocaleString()}
-                  </p>
-                  <p className="text-gray-400 text-xs mt-1">Scores · {label}</p>
-                  {count < dbStats.properties && (
-                    <p className="text-yellow-400 text-xs">{(dbStats.properties - count).toLocaleString()} missing</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-gray-400 text-sm">Could not load stats.</p>
-        )}
-      </div>
-
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-5 space-y-3">
         <h2 className="text-white font-semibold text-sm uppercase tracking-wide mb-3">Active Sources</h2>
         <div className="flex items-center gap-3">
@@ -464,6 +418,25 @@ export default function IngestPage() {
         {rescoreError && (
           <p className="text-red-300 text-xs">{rescoreError}</p>
         )}
+      </div>
+
+      {/* DB Status */}
+      <div className="border border-gray-700 rounded-lg px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-gray-400">
+        <span className="font-semibold text-gray-300 uppercase tracking-wide mr-1">DB</span>
+        {statsLoading ? (
+          <span className="text-gray-500">loading…</span>
+        ) : dbStats ? (
+          <>
+            <span><span className="text-white font-medium">{dbStats.properties.toLocaleString()}</span> properties</span>
+            <span><span className="text-white font-medium">{dbStats.signals.toLocaleString()}</span> signals</span>
+            {Object.entries(dbStats.scores).map(([mode, count]) => (
+              <span key={mode}><span className="text-white font-medium">{count.toLocaleString()}</span> {mode} scores</span>
+            ))}
+          </>
+        ) : (
+          <span className="text-gray-500">unavailable</span>
+        )}
+        <button onClick={fetchStats} className="ml-auto text-blue-400 hover:text-blue-300">↻</button>
       </div>
     </div>
   );

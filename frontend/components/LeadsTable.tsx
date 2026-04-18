@@ -145,7 +145,7 @@ export default function LeadsTable({
   function navigateToLead(lead: Lead) {
     const params = new URLSearchParams({ parcel_id: lead.parcel_id, county: lead.county });
     if (scoringMode !== DEFAULT_SCORING_MODE) params.set('scoring_mode', scoringMode);
-    router.push(`/leads/${encodeURIComponent(lead.parcel_id)}?${params.toString()}`);
+    router.push(`/property?${params.toString()}`);
   }
 
   function formatCurrency(value: number | null) {
