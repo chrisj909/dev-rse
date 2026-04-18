@@ -92,6 +92,7 @@ export default function LeadsTable({
   const [scoringMode, setScoringMode] = useState(initialFilters.scoring_mode ?? DEFAULT_SCORING_MODE);
   const [sortKey, setSortKey] = useState<SortKey>((initialFilters.sort_by as SortKey) ?? 'score');
   const [sortDir, setSortDir] = useState<SortDir>((initialFilters.sort_dir as SortDir) ?? 'desc');
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const page = Math.floor(offset / pageSize) + 1;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -131,14 +132,13 @@ export default function LeadsTable({
   }
 
   function toggleSort(key: SortKey) {
-    let nextDir: SortDir = 'desc';
+    let nextDir: SortDir = key === 'rank' ? 'asc' : 'desc';
     if (sortKey === key) {
       nextDir = sortDir === 'asc' ? 'desc' : 'asc';
-      setSortDir(nextDir);
     } else {
       setSortKey(key);
-      setSortDir('desc');
     }
+    setSortDir(nextDir);
     navigate({ sort_by: key, sort_dir: nextDir, page: '1' });
   }
 
@@ -219,39 +219,47 @@ export default function LeadsTable({
         onSubmit={handleFilterSubmit}
         className="rounded-2xl border border-gray-700 bg-gray-800/95 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.28)]"
       >
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-300">Detailed Search</p>
-            <h2 className="mt-1 text-lg font-semibold text-white">Refine the lead feed</h2>
-            <p className="mt-1 text-sm text-gray-400">Search across parcel, owner, value, score, and location without leaving the page.</p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setSearchOpen(o => !o)}
+            className="flex items-center gap-1.5 rounded-full border border-gray-600 bg-gray-700/80 px-3 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-gray-500 hover:bg-gray-700"
+          >
+            <span>{searchOpen ? '▲' : '▼'}</span>
+            <span>Search & Filter</span>
+          </button>
+          <div className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
+            {total} matches
           </div>
-          <div className="flex items-center gap-3">
-            <div className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
-              {total} matches
-            </div>
+          {activeFilterCount > 0 && (
             <div className="rounded-full border border-gray-600 bg-gray-700/80 px-3 py-1 text-xs font-medium text-gray-300">
               {activeFilterCount} active filters
             </div>
-            <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-200">
-              {getScoringModeLabel(scoringMode)}
-            </div>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="rounded-full bg-blue-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-60"
-            >
-              {isPending ? 'Updating...' : 'Apply'}
-            </button>
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="rounded-full border border-gray-600 px-3 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-gray-500 hover:bg-gray-700"
-            >
-              Reset
-            </button>
+          )}
+          <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-200">
+            {getScoringModeLabel(scoringMode)}
           </div>
+          {searchOpen && (
+            <>
+              <button
+                type="submit"
+                disabled={isPending}
+                className="rounded-full bg-blue-600 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-60"
+              >
+                {isPending ? 'Updating...' : 'Apply'}
+              </button>
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="rounded-full border border-gray-600 px-3 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-gray-500 hover:bg-gray-700"
+              >
+                Reset
+              </button>
+            </>
+          )}
         </div>
 
+        {searchOpen && (<>
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="block">
             <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-400">Scoring Lens</span>
@@ -376,7 +384,7 @@ export default function LeadsTable({
                 <button
                   key={r}
                   type="button"
-                  onClick={() => setRankFilter(r)}
+                  onClick={() => { setRankFilter(r); navigate({ rank: r, page: '1' }); }}
                   className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
                     rankFilter === r
                       ? 'bg-blue-600 text-white'
@@ -389,6 +397,7 @@ export default function LeadsTable({
             </div>
           </div>
         </div>
+        </>)}
       </form>
 
       {/* Desktop table */}

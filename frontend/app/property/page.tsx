@@ -78,7 +78,7 @@ export default async function PropertyPage({
   const hasDistressBonus = lead.score.reason.includes('distress_combo');
 
   return (
-    <div className="p-6 max-w-2xl space-y-6">
+    <div className="p-4 sm:p-6 max-w-2xl space-y-6">
       <div>
         <Link href={scoringMode === DEFAULT_SCORING_MODE ? '/leads' : `/leads?scoring_mode=${encodeURIComponent(scoringMode)}`} className="text-blue-400 hover:text-blue-300 text-sm">← Back to Leads</Link>
       </div>
@@ -86,6 +86,16 @@ export default async function PropertyPage({
       <div>
         <h1 className="text-2xl font-bold text-slate-900">{lead.address || 'Address unavailable'}</h1>
         <p className="text-slate-500 mt-1">{[lead.city, formatCounty(lead.county), lead.state].filter(Boolean).join(', ') || 'Location unavailable'}</p>
+        {lead.address && (
+          <a
+            href={`https://maps.google.com/?q=${encodeURIComponent([lead.address, lead.city, lead.state].filter(Boolean).join(', '))}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block mt-1 text-blue-400 hover:text-blue-300 text-xs underline"
+          >
+            Open in Maps →
+          </a>
+        )}
       </div>
 
       <div className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">
