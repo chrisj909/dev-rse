@@ -1,19 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: "\u229e" },
-  { href: "/leads", label: "Leads", icon: "\u25c8" },
-  { href: "/ingest", label: "Ingest", icon: "\u2b07" },
+  { href: "/", label: "Dashboard", icon: "⊞" },
+  { href: "/leads", label: "Leads", icon: "◈" },
+  { href: "/lists", label: "Lists", icon: "☆" },
+  { href: "/ingest", label: "Ingest", icon: "⬇" },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, signOut, loading } = useAuth();
 
   function isActive(href: string) {
     return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  }
+
+  async function handleSignOut() {
+    await signOut();
+    router.push("/");
   }
 
   return (
@@ -43,15 +52,44 @@ export default function Sidebar() {
             ))}
           </ul>
         </nav>
-        <div className="border-t border-slate-700 px-5 py-4">
-          <p className="text-xs text-slate-500">Shelby + Jefferson Counties, AL</p>
+
+        {/* User section */}
+        <div className="border-t border-slate-700 px-4 py-3">
+          {loading ? null : user ? (
+            <div className="space-y-1">
+              <p className="text-xs text-slate-400 truncate" title={user.email}>{user.email}</p>
+              <button
+                onClick={handleSignOut}
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <Link href="/auth" className="text-xs text-slate-400 hover:text-slate-200 transition-colors">
+              Sign in →
+            </Link>
+          )}
         </div>
       </aside>
 
       {/* Mobile top bar */}
-      <header className="md:hidden fixed top-0 inset-x-0 z-40 flex h-12 items-center border-b border-slate-700 bg-slate-900 px-4">
-        <span className="text-sm font-semibold tracking-wide text-white">RSE</span>
-        <span className="ml-2 text-xs text-slate-400">Signal Engine</span>
+      <header className="md:hidden fixed top-0 inset-x-0 z-40 flex h-12 items-center justify-between border-b border-slate-700 bg-slate-900 px-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold tracking-wide text-white">RSE</span>
+          <span className="text-xs text-slate-400">Signal Engine</span>
+        </div>
+        {!loading && (
+          user ? (
+            <button onClick={handleSignOut} className="text-xs text-slate-400 hover:text-white transition-colors">
+              Sign out
+            </button>
+          ) : (
+            <Link href="/auth" className="text-xs text-slate-400 hover:text-white transition-colors">
+              Sign in
+            </Link>
+          )
+        )}
       </header>
 
       {/* Mobile bottom nav */}

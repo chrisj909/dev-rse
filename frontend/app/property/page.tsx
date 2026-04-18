@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import AddToListButton from '@/components/AddToListButton';
 
 import { getServerApiBaseUrl } from '../../lib/server-api';
 import { DEFAULT_SCORING_MODE, getScoringModeLabel, normalizeScoringMode } from '../../lib/scoringModes';
@@ -84,18 +85,25 @@ export default async function PropertyPage({
       </div>
 
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">{lead.address || 'Address unavailable'}</h1>
-        <p className="text-slate-500 mt-1">{[lead.city, formatCounty(lead.county), lead.state].filter(Boolean).join(', ') || 'Location unavailable'}</p>
-        {lead.address && (
-          <a
-            href={`https://maps.google.com/?q=${encodeURIComponent([lead.address, lead.city, lead.state].filter(Boolean).join(', '))}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block mt-1 text-blue-400 hover:text-blue-300 text-xs underline"
-          >
-            Open in Maps →
-          </a>
-        )}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-slate-900">{lead.address || 'Address unavailable'}</h1>
+            <p className="text-slate-500 mt-1">{[lead.city, formatCounty(lead.county), lead.state].filter(Boolean).join(', ') || 'Location unavailable'}</p>
+            {lead.address && (
+              <a
+                href={`https://maps.google.com/?q=${encodeURIComponent([lead.address, lead.city, lead.state].filter(Boolean).join(', '))}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-1 text-blue-400 hover:text-blue-300 text-xs underline"
+              >
+                Open in Maps →
+              </a>
+            )}
+          </div>
+          <div className="flex-shrink-0 mt-1">
+            <AddToListButton county={lead.county} parcelId={lead.parcel_id} />
+          </div>
+        </div>
       </div>
 
       <div className="bg-gray-800 rounded-lg border border-gray-700 divide-y divide-gray-700">

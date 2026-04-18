@@ -3,6 +3,8 @@ import { type FormEvent, useState, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { DEFAULT_SCORING_MODE, SCORING_MODES, getScoringModeLabel } from '../lib/scoringModes';
+import SaveSearchButton from './SaveSearchButton';
+import SavedSearchesModal from './SavedSearchesModal';
 
 interface Lead {
   county: string;
@@ -257,6 +259,21 @@ export default function LeadsTable({
               </button>
             </>
           )}
+          <div className="ml-auto flex items-center gap-2">
+            <SavedSearchesModal />
+            <SaveSearchButton
+              filters={Object.fromEntries(
+                Object.entries({
+                  search, county: countyFilter, city: cityFilter, owner: ownerFilter,
+                  parcel_id: parcelFilter, min_score: minScore, max_score: maxScore,
+                  min_value: minValue, max_value: maxValue,
+                  rank: rankFilter !== 'All' ? rankFilter : '',
+                  scoring_mode: scoringMode, sort_by: sortKey, sort_dir: sortDir,
+                }).filter(([, v]) => v && v !== 'All')
+              )}
+              activeFilterCount={activeFilterCount}
+            />
+          </div>
         </div>
 
         {searchOpen && (<>
