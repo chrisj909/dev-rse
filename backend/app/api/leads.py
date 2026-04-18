@@ -101,6 +101,8 @@ def _build_lead(prop: Property, signal: Signal, score: Score) -> LeadResponse:
         signals=active_signals,
         signal_count=len(active_signals),
         last_updated=_coerce_datetime(getattr(score, "last_updated", None)),
+        lat=getattr(prop, "lat", None),
+        lng=getattr(prop, "lng", None),
     )
 
 
@@ -436,6 +438,8 @@ def _build_property_detail_response(row: tuple[Property, Signal, Score]) -> Prop
         ),
         created_at=_coerce_datetime(getattr(prop, "created_at", None)),
         updated_at=_coerce_datetime(getattr(prop, "updated_at", None)),
+        lat=getattr(prop, "lat", None),
+        lng=getattr(prop, "lng", None),
     )
 
 

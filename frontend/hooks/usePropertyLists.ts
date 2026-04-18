@@ -75,6 +75,15 @@ export function usePropertyLists() {
     return !error;
   }
 
+  async function addManyToList(listId: string, items: { county: string; parcel_id: string }[]) {
+    if (!items.length) return true;
+    const { error } = await createClient()
+      .from('property_list_items')
+      .upsert(items.map(i => ({ list_id: listId, county: i.county, parcel_id: i.parcel_id })));
+    await refresh();
+    return !error;
+  }
+
   async function removeFromList(itemId: string) {
     await createClient().from('property_list_items').delete().eq('id', itemId);
     await refresh();
@@ -130,5 +139,5 @@ export function usePropertyLists() {
     );
   }
 
-  return { lists, loading, createList, deleteList, addToList, removeFromList, getListItems, isInAnyList, exportList, refresh };
+  return { lists, loading, createList, deleteList, addToList, addManyToList, removeFromList, getListItems, isInAnyList, exportList, refresh };
 }

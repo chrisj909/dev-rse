@@ -1,10 +1,13 @@
 'use client';
 import { type FormEvent, useState, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 import { DEFAULT_SCORING_MODE, SCORING_MODES, getScoringModeLabel } from '../lib/scoringModes';
 import SaveSearchButton from './SaveSearchButton';
 import SavedSearchesModal from './SavedSearchesModal';
+import { usePropertyLists } from '@/hooks/usePropertyLists';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Lead {
   county: string;
@@ -95,6 +98,58 @@ export default function LeadsTable({
   const [sortKey, setSortKey] = useState<SortKey>((initialFilters.sort_by as SortKey) ?? 'score');
   const [sortDir, setSortDir] = useState<SortDir>((initialFilters.sort_dir as SortDir) ?? 'desc');
   const [searchOpen, setSearchOpen] = useState(false);
+
+  // Multi-select
+  const { user } = useAuth();
+  const { lists, addManyToList, createList } = usePropertyLists();
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [bulkListId, setBulkListId] = useState('');
+  const [bulkAdding, setBulkAdding] = useState(false);
+  const [bulkSuccess, setBulkSuccess] = useState(false);
+  const [bulkNewName, setBulkNewName] = useState('');
+  const [bulkShowNew, setBulkShowNew] = useState(false);
+
+  function selKey(lead: Lead) { return `${lead.county}:${lead.parcel_id}`; }
+
+  function toggleSelect(e: React.MouseEvent | React.ChangeEvent, lead: Lead) {
+    e.stopPropagation();
+    const k = selKey(lead);
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  }
+
+  function toggleSelectAll(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.checked) {
+      setSelectedKeys(new Set(leads.map(selKey)));
+    } else {
+      setSelectedKeys(new Set());
+    }
+  }
+
+  async function handleBulkAdd(listId: string) {
+    setBulkAdding(true);
+    const items = leads
+      .filter(l => selectedKeys.has(selKey(l)))
+      .map(l => ({ county: l.county, parcel_id: l.parcel_id }));
+    await addManyToList(listId, items);
+    setBulkAdding(false);
+    setBulkSuccess(true);
+    setSelectedKeys(new Set());
+    setTimeout(() => setBulkSuccess(false), 2000);
+  }
+
+  async function handleBulkCreateAndAdd() {
+    if (!bulkNewName.trim()) return;
+    setBulkAdding(true);
+    const list = await createList(bulkNewName.trim());
+    if (list) await handleBulkAdd(list.id);
+    setBulkNewName('');
+    setBulkShowNew(false);
+    setBulkAdding(false);
+  }
 
   const page = Math.floor(offset / pageSize) + 1;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -276,6 +331,72 @@ export default function LeadsTable({
           </div>
         </div>
 
+        {/* Bulk action bar */}
+        {selectedKeys.size > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-blue-700/50 bg-blue-900/20 px-4 py-2.5">
+            <span className="text-blue-200 text-sm font-medium">{selectedKeys.size} selected</span>
+            {!user ? (
+              <Link href="/auth" className="text-xs text-blue-400 underline">Sign in to add to list</Link>
+            ) : bulkSuccess ? (
+              <span className="text-green-400 text-xs font-medium">✓ Added to list</span>
+            ) : bulkShowNew ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  autoFocus
+                  value={bulkNewName}
+                  onChange={e => setBulkNewName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleBulkCreateAndAdd()}
+                  placeholder="New list name…"
+                  className="rounded-lg border border-gray-600 bg-gray-900/80 px-2.5 py-1 text-xs text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                />
+                <button
+                  onClick={handleBulkCreateAndAdd}
+                  disabled={!bulkNewName.trim() || bulkAdding}
+                  className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {bulkAdding ? '…' : 'Create & Add'}
+                </button>
+                <button onClick={() => setBulkShowNew(false)} className="text-gray-400 hover:text-white text-xs">Cancel</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 flex-wrap">
+                {lists.length > 0 && (
+                  <select
+                    value={bulkListId}
+                    onChange={e => setBulkListId(e.target.value)}
+                    className="rounded-lg border border-gray-600 bg-gray-900/80 px-2.5 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="">Choose list…</option>
+                    {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                )}
+                {bulkListId && (
+                  <button
+                    onClick={() => handleBulkAdd(bulkListId)}
+                    disabled={bulkAdding}
+                    className="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                  >
+                    {bulkAdding ? 'Adding…' : 'Add to List'}
+                  </button>
+                )}
+                <button
+                  onClick={() => setBulkShowNew(true)}
+                  className="rounded-lg border border-gray-600 px-3 py-1 text-xs text-gray-300 hover:text-white transition-colors"
+                >
+                  + New list
+                </button>
+              </div>
+            )}
+            <button
+              onClick={() => setSelectedKeys(new Set())}
+              className="ml-auto text-gray-500 hover:text-white text-xs"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {searchOpen && (<>
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="block">
@@ -422,6 +543,15 @@ export default function LeadsTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="text-gray-400 text-xs uppercase border-b border-gray-700">
+              <th className="px-3 py-3 text-center w-10" onClick={e => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={leads.length > 0 && leads.every(l => selectedKeys.has(selKey(l)))}
+                  onChange={toggleSelectAll}
+                  className="accent-blue-500 cursor-pointer"
+                  title="Select all on page"
+                />
+              </th>
               <th className="px-5 py-3 text-left cursor-pointer hover:text-white" onClick={() => toggleSort('address')}>
                 Address <SortIcon col="address" sortKey={sortKey} sortDir={sortDir} />
               </th>
@@ -452,7 +582,7 @@ export default function LeadsTable({
           <tbody>
             {leads.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-5 py-10 text-center text-gray-400">
+                <td colSpan={10} className="px-5 py-10 text-center text-gray-400">
                   {activeFilterCount > 0 ? 'No leads match your filters.' : 'No leads found.'}
                 </td>
               </tr>
@@ -461,8 +591,16 @@ export default function LeadsTable({
                 <tr
                   key={`${lead.county}:${lead.parcel_id}`}
                   onClick={() => navigateToLead(lead)}
-                  className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
+                  className={`border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors ${selectedKeys.has(selKey(lead)) ? 'bg-blue-900/20' : ''}`}
                 >
+                  <td className="px-3 py-3 text-center" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedKeys.has(selKey(lead))}
+                      onChange={e => toggleSelect(e, lead)}
+                      className="accent-blue-500 cursor-pointer"
+                    />
+                  </td>
                   <td className="px-5 py-3 text-white">{lead.address || 'Address unavailable'}</td>
                   <td className="px-5 py-3 text-gray-300">{lead.city ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-300">{formatCounty(lead.county)}</td>
@@ -514,13 +652,23 @@ export default function LeadsTable({
             <div
               key={`${lead.county}:${lead.parcel_id}`}
               onClick={() => navigateToLead(lead)}
-              className="bg-gray-800 rounded-lg border border-gray-700 px-4 py-3 cursor-pointer active:bg-gray-700/70"
+              className={`rounded-lg border px-4 py-3 cursor-pointer transition-colors ${selectedKeys.has(selKey(lead)) ? 'bg-blue-900/20 border-blue-700/50 active:bg-blue-900/30' : 'bg-gray-800 border-gray-700 active:bg-gray-700/70'}`}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-white text-sm font-medium truncate">{lead.address || 'Address unavailable'}</p>
-                  <p className="text-gray-400 text-xs mt-0.5">{[lead.city, formatCounty(lead.county)].filter(Boolean).join(' · ')}</p>
-                  {lead.owner_name && <p className="text-gray-500 text-xs mt-0.5 truncate">{lead.owner_name}</p>}
+                <div className="flex items-start gap-2 min-w-0">
+                  <div onClick={e => toggleSelect(e, lead)} className="flex-shrink-0 mt-0.5 p-0.5">
+                    <input
+                      type="checkbox"
+                      checked={selectedKeys.has(selKey(lead))}
+                      onChange={() => {}}
+                      className="accent-blue-500 cursor-pointer"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-white text-sm font-medium truncate">{lead.address || 'Address unavailable'}</p>
+                    <p className="text-gray-400 text-xs mt-0.5">{[lead.city, formatCounty(lead.county)].filter(Boolean).join(' · ')}</p>
+                    {lead.owner_name && <p className="text-gray-500 text-xs mt-0.5 truncate">{lead.owner_name}</p>}
+                  </div>
                 </div>
                 <div className="flex-shrink-0 flex flex-col items-end gap-1">
                   <RankBadge rank={lead.rank} />

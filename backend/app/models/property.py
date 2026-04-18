@@ -39,6 +39,10 @@ class Property(Base):
     last_sale_date: Mapped[datetime | None] = mapped_column(Date)
     assessed_value: Mapped[float | None] = mapped_column(Numeric(12, 2))
 
+    # Coordinates (WGS84) — populated from ArcGIS geometry at ingest time
+    lat: Mapped[float | None] = mapped_column(nullable=True)
+    lng: Mapped[float | None] = mapped_column(nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

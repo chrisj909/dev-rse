@@ -47,6 +47,8 @@ class LeadResponse(BaseModel):
     signals: list[str]           # active signal names only
     signal_count: int = 0
     last_updated: datetime
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 
 class LeadsListResponse(BaseModel):
@@ -119,3 +121,5 @@ class PropertyDetailResponse(BaseModel):
     score: ScoreDetail
     created_at: datetime
     updated_at: datetime
+    lat: Optional[float] = None
+    lng: Optional[float] = None

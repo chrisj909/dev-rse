@@ -114,6 +114,7 @@ vercel.json          Deployment routing config
 | `/leads` | Searchable, sortable, paginated lead feed with collapsible advanced search |
 | `/property?parcel_id=...` | Property detail — signals, score drivers, Maps link, GIS source link |
 | `/lists` | Property lists — create/delete named lists, add/remove properties, export CSV |
+| `/map` | Map view — properties as color-coded pins on OpenStreetMap, saveable views |
 | `/auth` | Sign In / Create Account (email + password via Supabase) |
 
 ## 5. Data Flow
@@ -153,7 +154,9 @@ The same endpoint is also used for on-demand full rescores from the ingest UI.
 
 Canonical parcel record keyed by `(county, parcel_id)`.
 
-Key fields: `county`, `parcel_id`, `address`, `city`, `state`, `zip`, `owner_name`, `mailing_address`, `last_sale_date`, `assessed_value`
+Key fields: `county`, `parcel_id`, `address`, `city`, `state`, `zip`, `owner_name`, `mailing_address`, `last_sale_date`, `assessed_value`, `lat`, `lng`
+
+`lat` and `lng` are WGS84 coordinates extracted from the ArcGIS polygon centroid at ingest time. Null for properties where ArcGIS returned no geometry.
 
 ### 6.2 `signals`
 
@@ -292,7 +295,18 @@ The last example: `25 + 30 + 20 distress combo bonus = 75`.
 - **Rescore tool**: triggers the full signal + scoring pipeline over all existing properties via the cron endpoint; inline spinner and progress tracker
 - **DB Status bar**: live counts for properties, signals, and per-mode scores with a refresh button
 
-### 8.5 User Accounts (`/auth`, `/lists`)
+### 8.5 Map View (`/map`)
+
+Properties are displayed as color-coded pins on an OpenStreetMap base layer using Leaflet. Coordinates are extracted from ArcGIS polygon geometry at ingest time and stored as `lat`/`lng` on the `properties` table — no geocoding API required.
+
+- **Rank-coded pins**: green (A), yellow (B), gray (C)
+- **Filter bar**: scoring lens, county, rank, and keyword search — same parameters as the lead feed
+- **Property panel**: click any pin to open a side panel with address, owner, score, rank, value, View Detail link, Maps link, and Add to List dropdown
+- **Save View**: authenticated users can save the current filter state (including map viewport) as a named saved search, reloadable from the lead feed's saved searches menu
+- **List/Map toggle**: link in the header to switch between feed and map views
+- Properties without coordinates (ArcGIS returned no geometry) are excluded from the map; the filter bar shows counts for mapped vs. total results
+
+### 8.6 User Accounts (`/auth`, `/lists`)
 
 User accounts are powered by Supabase Auth (email + password). The Supabase browser client handles all user-data CRUD directly from the browser using Row Level Security — no user data flows through the FastAPI backend.
 
@@ -317,7 +331,7 @@ User accounts are powered by Supabase Auth (email + password). The Supabase brow
 - Remove individual properties from a list or delete the entire list
 - Export any list to CSV including joined property data
 
-### 8.6 Mobile Layout
+### 8.7 Mobile Layout
 
 - Fixed top bar on mobile with app title and sign-in / sign-out control
 - Bottom tab navigation (Dashboard / Leads / Lists / Ingest)

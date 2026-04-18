@@ -155,6 +155,8 @@ async def run_ingest(
             raw_mailing_address=rec.get("raw_mailing_address") or mailing_address,
             last_sale_date=rec.get("last_sale_date"),
             assessed_value=rec.get("assessed_value"),
+            lat=rec.get("lat"),
+            lng=rec.get("lng"),
         ).on_conflict_do_update(
             index_elements=["county", "parcel_id"],
             set_={
@@ -169,6 +171,8 @@ async def run_ingest(
                 "raw_mailing_address": rec.get("raw_mailing_address") or mailing_address,
                 "last_sale_date": rec.get("last_sale_date"),
                 "assessed_value": rec.get("assessed_value"),
+                "lat": rec.get("lat"),
+                "lng": rec.get("lng"),
             },
         )
         await session.execute(stmt)

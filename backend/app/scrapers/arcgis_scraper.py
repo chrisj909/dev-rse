@@ -70,6 +70,29 @@ COUNTY_CONFIGS: dict[str, dict[str, Any]] = {
 }
 
 
+def _centroid_from_geometry(geom: dict | None) -> tuple[float | None, float | None]:
+    """Return (lat, lng) in WGS84 from an ArcGIS geometry object.
+
+    Handles point features (x/y) and polygon features (rings).
+    Expects coordinates already projected to WGS84 via outSR=4326.
+    """
+    if not geom:
+        return None, None
+    if "x" in geom and "y" in geom:
+        x, y = geom["x"], geom["y"]
+        if x is None or y is None:
+            return None, None
+        return float(y), float(x)
+    if "rings" in geom:
+        ring = geom["rings"][0] if geom["rings"] else []
+        if not ring:
+            return None, None
+        cx = sum(pt[0] for pt in ring) / len(ring)
+        cy = sum(pt[1] for pt in ring) / len(ring)
+        return float(cy), float(cx)
+    return None, None
+
+
 def _parse_inst_date(val: Any) -> datetime | None:
     """INST_DATE1 is stored as YYYYMMDD integer, e.g. 20091120."""
     if not val:
@@ -115,7 +138,7 @@ def _build_where_clause(config: dict[str, Any], updated_since: datetime | None =
     return f"({base_where}) AND {updated_field} >= DATE '{timestamp_literal}'"
 
 
-def _record_to_dict_shelby(attrs: dict) -> dict:
+def _record_to_dict_shelby(attrs: dict, geom: dict | None = None) -> dict:
     parcel_id = attrs.get("PROPERTY_NUM") or ""
     if not parcel_id:
         return {}
@@ -157,6 +180,8 @@ def _record_to_dict_shelby(attrs: dict) -> dict:
     except (TypeError, ValueError):
         assessed_value = None
 
+    lat, lng = _centroid_from_geometry(geom)
+
     return {
         "county": "shelby",
         "parcel_id": str(parcel_id).strip(),
@@ -173,6 +198,8 @@ def _record_to_dict_shelby(attrs: dict) -> dict:
         "is_tax_delinquent": is_delinquent,
         "is_absentee_owner": is_absentee,
         "long_term_owner_years": long_term_years,
+        "lat": lat,
+        "lng": lng,
         "raw": attrs,
     }
 
@@ -189,7 +216,7 @@ def _compose_jefferson_address(attrs: dict) -> str | None:
     return " ".join(text_parts) or None
 
 
-def _record_to_dict_jefferson(attrs: dict) -> dict:
+def _record_to_dict_jefferson(attrs: dict, geom: dict | None = None) -> dict:
     parcel_id = attrs.get("PARCELID") or ""
     if not parcel_id:
         return {}
@@ -226,6 +253,8 @@ def _record_to_dict_jefferson(attrs: dict) -> dict:
         and prop_adr.upper() != mail_street.upper()
     )
 
+    lat, lng = _centroid_from_geometry(geom)
+
     return {
         "county": "jefferson",
         "parcel_id": str(parcel_id).strip(),
@@ -242,15 +271,17 @@ def _record_to_dict_jefferson(attrs: dict) -> dict:
         "is_tax_delinquent": False,
         "is_absentee_owner": is_absentee,
         "long_term_owner_years": None,
+        "lat": lat,
+        "lng": lng,
         "raw": attrs,
     }
 
 
-def _record_to_dict(attrs: dict, county: str) -> dict:
+def _record_to_dict(attrs: dict, county: str, geom: dict | None = None) -> dict:
     normalized = _normalize_county(county)
     if normalized == "jefferson":
-        return _record_to_dict_jefferson(attrs)
-    return _record_to_dict_shelby(attrs)
+        return _record_to_dict_jefferson(attrs, geom)
+    return _record_to_dict_shelby(attrs, geom)
 
 
 async def fetch_all(
@@ -278,7 +309,8 @@ async def fetch_all(
                 "orderByFields": f"{config['order_by_field']} ASC",
                 "resultOffset": offset,
                 "resultRecordCount": min(page_size, remaining) if remaining is not None else page_size,
-                "returnGeometry": "false",
+                "returnGeometry": "true",
+                "outSR": "4326",
                 "f": "json",
             }
             data = await polite_get_json(client, config["base_url"], params=params)
@@ -288,7 +320,7 @@ async def fetch_all(
                 break
 
             for feat in features:
-                row = _record_to_dict(feat.get("attributes", {}), config["county"])
+                row = _record_to_dict(feat.get("attributes", {}), config["county"], feat.get("geometry"))
                 if row:
                     results.append(row)
                     if limit and len(results) >= limit:
@@ -319,7 +351,8 @@ async def fetch_delinquent_only(county: str = "shelby") -> list[dict]:
                 "orderByFields": f"{config['order_by_field']} ASC",
                 "resultOffset": offset,
                 "resultRecordCount": page_size,
-                "returnGeometry": "false",
+                "returnGeometry": "true",
+                "outSR": "4326",
                 "f": "json",
             }
             data = await polite_get_json(client, config["base_url"], params=params)
@@ -329,7 +362,7 @@ async def fetch_delinquent_only(county: str = "shelby") -> list[dict]:
                 break
 
             for feat in features:
-                row = _record_to_dict(feat.get("attributes", {}), config["county"])
+                row = _record_to_dict(feat.get("attributes", {}), config["county"], feat.get("geometry"))
                 if row:
                     results.append(row)
 
