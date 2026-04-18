@@ -1,8 +1,6 @@
 # Real Estate Signal Engine
 
-Real Estate Signal Engine (RSE) is a lead generation system for public real estate data. It ingests county parcel records and tax-delinquency overlays, derives seller-investor signals, scores each parcel, and exposes the results through a FastAPI backend and a Next.js dashboard.
-
-This document is the current solution design reference for the repository as it exists now.
+Real Estate Signal Engine (RSE) is a lead generation system for public real estate data. It ingests county parcel records and tax-delinquency overlays, derives seller-investor signals, scores each parcel across three configurable scoring lenses, and exposes the results through a FastAPI backend and a mobile-responsive Next.js dashboard.
 
 ## 1. Purpose
 
@@ -10,65 +8,31 @@ The system is designed to answer one question:
 
 Which properties in the covered Alabama counties look most likely to represent actionable seller or investor opportunities?
 
-The current MVP focuses on:
+The current focus:
 
 - ingesting parcel data from Shelby County ArcGIS and Jefferson County ArcGIS
-- overlaying delinquency signals where available
+- overlaying delinquency signals from the Shelby GovEase feed
 - computing repeatable signal flags and a weighted lead score
-- surfacing ranked leads in a browser UI and JSON APIs
+- scoring properties across three lens modes: Broad, Owner Occupant, and Investor
+- surfacing ranked leads in a mobile-responsive browser UI and JSON APIs
 
-## 2. Current Scope
+## 2. Current Coverage
 
-Implemented now:
+As of the latest ingest, the database holds approximately 66,000+ properties across Shelby and Jefferson counties with signals and scores computed for all three modes.
 
-- live ingest from Shelby County ArcGIS
-- live ingest from Jefferson County ArcGIS
-- optional delinquent-only ingest mode
-- property upsert keyed by `(county, parcel_id)`
-- signal generation for absentee ownership, long-term ownership, out-of-state owners, and likely corporate owners
-- Shelby tax-delinquency ingestion path
-- weighted lead scoring and rank assignment
-- leads list, recent leads, property detail, CRM export, and cron APIs
-- web dashboard, ingest UI, leads UI, and property detail UI
-- Vercel deployment with FastAPI serverless API and Next.js frontend
-- Vercel cron-compatible batch signal reruns using `CRON_SECRET`
+Signals fully implemented with live data:
 
-Not fully realized yet:
+- `absentee_owner` — property vs mailing address mismatch
+- `long_term_owner` — no recorded sale in 10+ years
+- `out_of_state_owner` — mailing address outside Alabama
+- `corporate_owner` — owner name matches LLC, trust, or holdings patterns
+- `tax_delinquent` — Shelby overlay via GovEase
 
-- richer distress data sources beyond the current parcel and tax overlay set
-- deeper ranking calibration for production-quality prioritization
-- production monitoring and alerting for ingest/cron failures
-- final UX polish for filtering, pagination, and operator workflows
+Signals present in the schema and scoring model but not yet backed by live ingestion:
 
-## 3. Current Status
+- `pre_foreclosure`, `probate`, `eviction`, `code_violation`
 
-As of the current repository state, the project is in a usable MVP-plus state rather than an experimental prototype.
-
-Working now:
-
-- deployed FastAPI + Next.js application on Vercel
-- Supabase-backed persistence with PgBouncer-safe async configuration
-- county-aware parcel identity using `(county, parcel_id)`
-- live Shelby + Jefferson parcel ingest
-- Shelby tax-delinquency overlay ingest
-- leads dashboard, lead feed, property detail, CRM export, and webhook payloads
-- backend-driven lead filtering, sorting, and pagination
-- daily Vercel cron wiring for signal/scoring refresh
-
-Validated recently in this repo:
-
-- backend tests passing after county, export, dashboard, and cron changes
-- frontend production build passing
-- production dashboard `422` contract mismatch fixed by reducing dashboard fetches to the shipped `/api/leads` cap
-- advanced search Enter-to-apply behavior fixed on the leads page
-
-Still intentionally incomplete:
-
-- Jefferson-specific distress overlays beyond parcel ownership/value data
-- production-grade observability, alerting, and job run dashboards
-- richer ranking inputs for legal-distress and municipal-distress scenarios
-
-## 4. System Overview
+## 3. System Overview
 
 ```text
 Shelby ArcGIS + Jefferson ArcGIS + Shelby GovEase overlay
@@ -79,20 +43,26 @@ Shelby ArcGIS + Jefferson ArcGIS + Shelby GovEase overlay
       v
    properties table
       |
-      +--> SignalEngine --> signals table
+      +--> SignalEngine (per-property savepoints + deadlock retry)
+      |         |
+      |         v
+      |     signals table
       |
-      +--> TaxDelinquencyService
+      +--> TaxDelinquencyService (savepoints + deadlock retry)
       |
-      +--> ScoringEngine --> scores table
+      +--> ScoringEngine (per-mode, per-property savepoints + deadlock retry)
+      |         |
+      |         v
+      |     scores table  (one row per property × scoring mode)
       |
       v
    FastAPI read APIs
       |
       v
-   Next.js dashboard and lead views
+   Next.js dashboard, lead feed, property detail
 ```
 
-## 5. Architecture
+## 4. Architecture
 
 ### 4.1 Runtime Topology
 
@@ -126,115 +96,99 @@ vercel.json          Deployment routing config
 | Config | `backend/app/core/config.py` | Env loading, DB URL normalization, PgBouncer-safe asyncpg config |
 | DB session | `backend/app/db/session.py` | Async engine, session factory, NullPool serverless setup |
 | Ingest API | `backend/app/api/ingest.py` | Scrape, upsert, signal run, tax update, score run |
-| Leads API | `backend/app/api/leads.py` | Lead list, recent leads, property detail |
+| Leads API | `backend/app/api/leads.py` | Lead list, sorting, filtering, pagination, property detail |
+| Health API | `backend/app/api/health.py` | Liveness and DB stats |
 | Export API | `backend/app/api/export.py` | CRM export endpoints |
-| Cron API | `backend/app/api/cron.py` | Protected batch signal + scoring endpoint |
+| Cron API | `backend/app/api/cron.py` | Protected batch signal + scoring rescore endpoint |
 | Scrapers | `backend/app/scrapers/` | ArcGIS and GovEase ingestion logic |
-| Signals | `backend/app/signals/engine.py` | Signal generation pipeline |
-| Scoring | `backend/app/scoring/engine.py` | Score and rank generation |
+| Signals | `backend/app/signals/engine.py` | Signal generation with per-property savepoints and deadlock retry |
+| Scoring | `backend/app/scoring/engine.py` | Score and rank generation, all modes, savepoints and deadlock retry |
+| Tax svc | `backend/app/services/tax_delinquency.py` | Tax-delinquency upsert with savepoints and deadlock retry |
 
-### 4.4 Main Frontend Views
+### 4.4 Main Frontend Routes
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Dashboard summary and top leads |
-| `/ingest` | Manual ingest runner |
-| `/leads` | Searchable leads table |
-| `/property?parcel_id=...` | Property detail view |
+| `/` | Dashboard — headline stats, top-5 leads by score, scoring lens selector |
+| `/ingest` | Ingest runner, rescore tool, live DB status |
+| `/leads` | Searchable, sortable, paginated lead feed with collapsible advanced search |
+| `/property?parcel_id=...` | Property detail — signals, score drivers, Maps link, GIS source link |
 
-Note: property detail navigation currently uses the query-parameter route above because it is the most stable deployment path with the current Vercel setup.
+## 5. Data Flow
 
-## 6. Data Flow
-
-### 6.1 Ingest Flow
+### 5.1 Ingest Flow
 
 1. `POST /api/ingest/run` triggers ArcGIS and optional overlay scrapers.
    Optional incremental parameters: `updated_since=<ISO timestamp>` or `delta_days=<N>`.
-   Current source-side changed-since support is strongest for Shelby parcel data; unsupported sources fall back to a full fetch.
 2. Results are merged by `parcel_id`.
-3. Properties are upserted into the `properties` table.
-4. Signal generation runs for the updated properties.
-5. Tax-delinquency records are updated.
-6. Scoring runs and writes rank and reason metadata.
-7. The API returns a summary of fetched, upserted, signaled, and scored records.
+3. Properties are upserted into the `properties` table (keyed by `(county, parcel_id)`).
+4. Signal generation runs per property using savepoints — a failure on one property rolls back only that savepoint, not the whole batch.
+5. Tax-delinquency records are updated via `TaxDelinquencyService`.
+6. Scoring runs across all three modes and writes rank and reason metadata.
+7. Transient deadlocks are retried up to 3× with exponential backoff at each layer.
+8. The API returns a summary of fetched, upserted, signaled, and scored records. On failure, `signals.error` and `scoring.error` fields are populated in the response (never silently masked as success counts).
 
-### 6.2 Read Flow
+Large-scale ingests use auto-batching from the UI: a full single-county ingest is broken into 250-record chunks client-side, with cumulative stats displayed in real time.
 
-1. Frontend pages call the FastAPI endpoints under `/api/*`.
-2. Leads endpoints join `properties`, `signals`, and `scores`.
-3. The API returns normalized response models.
-4. The dashboard and lead feed render sorted slices of those results.
+### 5.2 Read Flow
 
-### 6.3 Scheduled Flow
+1. Frontend pages call FastAPI endpoints under `/api/*`.
+2. Lead endpoints join `properties`, `signals`, and `scores`.
+3. Results are sorted, filtered, and paginated server-side.
+4. The dashboard and lead feed render sorted slices. All pages preserve the selected scoring lens via `?scoring_mode=` query parameter.
 
-`GET /api/cron/run-signals` is a protected endpoint that re-runs signal and scoring logic over existing properties.
-The deployed Vercel cron calls this route daily using `CRON_SECRET` bearer authentication.
+### 5.3 Scheduled Flow
 
-This same full scoring path is the one-time backfill mechanism for newly added scoring modes on existing properties.
+`GET /api/cron/run-signals` is a protected endpoint that re-runs signal and scoring logic over all existing properties in offset-paginated batches of 500.
 
-The current schedule in `vercel.json` is `0 6 * * *` (06:00 UTC daily).
+The deployed Vercel cron calls this route daily at `0 6 * * *` (06:00 UTC).
 
-## 7. Core Data Model
+The same endpoint is also used for on-demand full rescores from the ingest UI.
+
+## 6. Core Data Model
 
 ### 6.1 `properties`
 
 Canonical parcel record keyed by `(county, parcel_id)`.
 
-Important fields:
-
-- `county`
-- `parcel_id`
-- `address`
-- `raw_address`
-- `city`, `state`, `zip`
-- `owner_name`
-- `mailing_address`
-- `raw_mailing_address`
-- `last_sale_date`
-- `assessed_value`
+Key fields: `county`, `parcel_id`, `address`, `city`, `state`, `zip`, `owner_name`, `mailing_address`, `last_sale_date`, `assessed_value`
 
 ### 6.2 `signals`
 
-Boolean flags derived from property and owner characteristics.
+Boolean flags derived from property and owner characteristics. One row per property.
 
-Current signal fields in active use:
-
-- `absentee_owner`
-- `long_term_owner`
-- `out_of_state_owner`
-- `corporate_owner`
-- `tax_delinquent`
-- `pre_foreclosure`
-- `probate`
-- `eviction`
-- `code_violation`
+Current fields: `absentee_owner`, `long_term_owner`, `out_of_state_owner`, `corporate_owner`, `tax_delinquent`, `pre_foreclosure`, `probate`, `eviction`, `code_violation`
 
 ### 6.3 `scores`
 
-Weighted output of the scoring pipeline.
+Weighted output of the scoring pipeline. One row per `(property_id, scoring_mode)`.
 
-Important fields:
+Key fields: `score`, `rank`, `reason` (list of contributing signal keys), `scoring_mode`, `scoring_version`, `last_updated`
 
-- `score`
-- `rank`
-- `reason`
-- `scoring_mode`
-- `scoring_version`
-- `last_updated`
+## 7. Scoring Design
 
-## 8. Scoring Design
+Signals are universal property facts. Scores are computed per lens and stored separately so switching lenses does not require re-running signal detection.
 
-Current scoring lenses are defined in `backend/app/scoring/weights.py`.
+### 7.1 Scoring Modes
 
-Signals remain universal property facts. Scores are now stored and read per scoring lens.
+| Mode | Key | Description |
+| --- | --- | --- |
+| Broad | `broad` | Blended opportunity ranking across seller and investor use cases. Default. |
+| Owner Occupant | `owner_occupant` | Prioritizes homeowner-style distress and long tenure; de-emphasizes investor ownership patterns. |
+| Investor | `investor` | Prioritizes absentee, out-of-state, and portfolio-style ownership alongside distress. |
 
-Current scoring modes:
+### 7.2 Score Formula
 
-- `broad` — blended opportunity ranking across seller and investor use cases; default mode for backward compatibility
-- `owner_occupant` — prioritizes homeowner-style distress and long tenure while de-emphasizing investor ownership patterns
-- `investor` — prioritizes absentee, out-of-state, and portfolio-style ownership alongside distress
+```text
+score = sum(active signal weights) + distress_combo_bonus
+```
 
-Representative `broad` mode weights:
+Where:
+
+- distress signals are `tax_delinquent`, `pre_foreclosure`, `probate`, `code_violation`
+- `distress_combo_bonus = 20` when 2+ distress signals are active
+
+### 7.3 `broad` Mode Weights
 
 | Signal | Weight |
 | --- | --- |
@@ -247,112 +201,114 @@ Representative `broad` mode weights:
 | `probate` | 20 |
 | `code_violation` | 15 |
 
-### 8.1 Score Formula
+### 7.4 Rank Thresholds
 
-The current score is:
+| Mode | A | B | C |
+| --- | --- | --- | --- |
+| `broad` | ≥ 25 | ≥ 10 | < 10 |
+| `owner_occupant` | ≥ 30 | ≥ 12 | < 12 |
+| `investor` | ≥ 28 | ≥ 12 | < 12 |
 
-`sum(active signal weights) + distress_combo_bonus`
-
-Where:
-
-- distress signals are `tax_delinquent`, `pre_foreclosure`, `probate`, and `code_violation`
-- `distress_combo_bonus = 20`
-- the bonus is added only when `2` or more distress signals are active
-
-Rank thresholds are mode-specific. Current thresholds are:
-
-- `broad`: A >= 25, B >= 10, C < 10
-- `owner_occupant`: A >= 30, B >= 12, C < 12
-- `investor`: A >= 28, B >= 12, C < 12
-
-### 8.2 Implemented vs Placeholder Signals
-
-The schema and scoring model support more signals than the live ingest currently powers.
-
-Implemented with real data today:
-
-- `absentee_owner`
-   source: property vs mailing address comparison
-   implementation: computed in `SignalEngine`
-- `long_term_owner`
-   source: `last_sale_date`
-   implementation: computed in `SignalEngine`
-- `out_of_state_owner`
-   source: state suffix inferred from normalized mailing address versus property state
-   implementation: computed in `SignalEngine`
-- `corporate_owner`
-   source: owner-name entity matching for LLC, trust, holdings, and similar patterns
-   implementation: computed in `SignalEngine`
-- `tax_delinquent`
-   source: Shelby overlay / explicit tax-delinquency ingestion
-   implementation: written through `TaxDelinquencyService`
-
-Present in the model but still placeholder-stubbed in the signal engine:
-
-- `pre_foreclosure`
-- `probate`
-- `eviction`
-- `code_violation`
-
-This matters because the scoring model is broader than the live input coverage. Rank math is already in place for distress-heavy cases, but most current production records are still driven by ownership and tax-overlay signals rather than a full distress stack.
-
-### 8.3 Practical Scoring Examples
-
-Examples below use the default `broad` mode unless noted otherwise.
+### 7.5 Scoring Examples (`broad`)
 
 | Active signals | Score | Rank |
 | --- | --- | --- |
 | none | 0 | C |
-| `corporate_owner` | 8 | C |
 | `long_term_owner` | 10 | B |
-| `out_of_state_owner` | 12 | B |
-| `absentee_owner` | 15 | B |
 | `absentee_owner` + `long_term_owner` | 25 | A |
 | `tax_delinquent` | 25 | A |
-| `probate` | 20 | B |
 | `tax_delinquent` + `pre_foreclosure` | 75 | A |
 
-The last example is `25 + 30 + 20 distress bonus = 75`.
+The last example: `25 + 30 + 20 distress combo bonus = 75`.
 
-### 8.4 Current Scoring Limitations
+### 7.6 Current Scoring Limitations
 
-- the new owner-pattern signals are intentionally heuristic rather than title-perfect; they broaden lead coverage across both counties but still need production tuning against actual deal outcomes
-- Jefferson data currently contributes parcel, address, mailing, ownership, and value data, but not the richer distress overlays needed to fully exploit the higher-value scoring branches.
-- `pre_foreclosure`, `probate`, `eviction`, and `code_violation` are scored if present, but their live ingestion pipelines are not yet implemented.
-- `tax_delinquent` is materially stronger in Shelby than Jefferson because the Shelby overlay path is real and Jefferson currently lacks an equivalent public source in this repo.
+- `pre_foreclosure`, `probate`, `eviction`, and `code_violation` are scored if present but their live ingestion pipelines are not yet implemented.
+- `tax_delinquent` is materially stronger for Shelby than Jefferson because the Shelby GovEase overlay is active; Jefferson lacks an equivalent public source in this repo.
+- Jefferson contributes parcel, address, mailing, ownership, and assessed-value data but not the richer distress overlays that fully exploit the higher-weight scoring branches.
 
-### 8.5 Scoring Expansion Plan
+## 8. Frontend Features
 
-Highest-value next improvements:
+### 8.1 Dashboard (`/`)
 
-1. Add a Jefferson-compatible tax or legal-distress overlay.
-2. Add probate ingestion so inherited/distressed ownership changes become first-class signals.
-3. Add pre-foreclosure or court-derived legal-distress inputs.
-4. Add code-violation / nuisance-property data where public sources exist.
-5. Recalibrate weights only after the new inputs exist, so thresholds are tuned on real signal coverage rather than placeholder math.
+- Headline stat cards: Total Properties, Signals Detected, Top Leads (Rank A)
+- Scoring lens selector persists across all pages via `?scoring_mode=` query parameter
+- Top-5 leads by score with click-through to property detail
+- Auto-refreshes every 60 seconds; manual refresh button
 
-Current practical implication:
+### 8.2 Lead Feed (`/leads`)
 
-- a long-term-owner-only record now lands in Rank B rather than being grouped with zero-signal records
-- the scoring framework is functioning, but richer distress-signal coverage is still the main remaining product-quality gap
+- Backend-driven filtering, sorting, and offset pagination
+- **Collapsible advanced search** (closed by default) — filter by county, city, owner, parcel ID, score range, assessed value range
+- **Rank filter** — A/B/C buttons apply immediately without requiring Apply
+- **Sortable columns** — all columns including Rank (defaults ascending, A-leads first) and Owner
+- **Mobile sort bar** — scrollable pill row for Score, Rank, Value, Owner, Updated
+- **Mobile card view** — tap-friendly cards with score, rank, signals, value, and date; desktop gets full table
+- Scoring lens selector with per-lens result counts
+- Pagination with page size up to 250 records per page
 
-## 9. Public API Surface
+### 8.3 Property Detail (`/property?parcel_id=...&county=...`)
 
-### 9.1 Health and Operational Endpoints
+- Full property info card: owner, county, parcel ID, score, rank, signals detected, scoring mode, scoring version, mailing address, assessed value, last updated
+- **Active Signals** section — signal badges with hover tooltips explaining what each signal means
+- **Score Drivers** section — driver badges explaining why each signal contributes to the score, with distress combo bonus highlighted separately in amber
+- **Open in Maps** link — opens Google Maps for the property address
+- **Source Data** section — direct link to the relevant county GIS portal (Shelby or Jefferson)
+- Scoring lens awareness: detail is fetched for the active lens
+
+### 8.4 Ingest Page (`/ingest`)
+
+- **Options**: dry run, delinquent-only mode, county scope, record limit, cron secret
+- **Auto-batch mode**: full single-county ingest automatically batches in 250-record chunks with real-time cumulative progress
+- **Run button**: animated spinner during active ingest; stays blue rather than going gray
+- **Progress display**: in-progress card with pulsing indicator and batch status
+- **Result summary**: fetched / upserted / signals / scored stat tiles; error fields shown if any layer failed
+- **Rescore tool**: triggers the full signal + scoring pipeline over all existing properties via the cron endpoint; inline spinner and progress tracker
+- **DB Status bar**: live counts for properties, signals, and per-mode scores with a refresh button
+
+### 8.5 Mobile Layout
+
+- Fixed top bar on mobile with app title
+- Bottom tab navigation (Dashboard / Leads / Ingest)
+- Desktop gets a persistent left sidebar
+- All pages use responsive padding and stacked layouts on small screens
+
+## 9. Backend Reliability
+
+### 9.1 Per-Property Savepoints
+
+Signal generation, scoring, and tax-delinquency writes all use `session.begin_nested()` savepoints per property. A SQL failure on one property rolls back only that savepoint — the outer transaction continues and the remaining properties in the batch are unaffected.
+
+This replaces the previous pattern where a single property failure would abort the entire batch transaction with `InFailedSQLTransactionError`.
+
+### 9.2 Deadlock Retry
+
+Each per-property write block retries up to 3 times with exponential backoff (50 ms, 100 ms) on `DeadlockDetectedError`. This handles transient lock contention between concurrent ingest and cron runs without surfacing errors to the operator.
+
+### 9.3 Honest Error Reporting
+
+The ingest API resets `score_result` and `signal_result` in the exception handler so that a failed commit never reports success counts. The `signals.error` and `scoring.error` fields in the ingest response surface the actual error text when a layer fails.
+
+The cron endpoint returns a JSON error body instead of a bare HTTP 500 so failures are readable in the rescore UI.
+
+## 10. Public API Surface
+
+### 10.1 Health and Operational Endpoints
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/health` | Liveness check |
+| `GET` | `/api/health/stats` | DB record counts: properties, signals, per-mode scores |
 | `POST` | `/api/ingest/run` | Run live ingest |
-| `GET` | `/api/cron/run-signals` | Protected full signal and scoring batch |
+| `GET` | `/api/cron/run-signals` | Protected full signal and scoring rescore batch |
 
-Admin auth accepted by ingest and cron routes:
+Auth accepted by ingest and cron routes:
 
 - `Authorization: Bearer <CRON_SECRET>`
 - `X-Cron-Secret: <CRON_SECRET>`
 - `?cron_secret=<CRON_SECRET>` for manual debugging
 
-### 9.2 Lead Read Endpoints
+### 10.2 Lead Read Endpoints
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -362,53 +318,43 @@ Admin auth accepted by ingest and cron routes:
 | `GET` | `/api/leads/{parcel_id}` | Property detail by parcel ID |
 | `GET` | `/api/property/{property_id}` | Property detail by UUID |
 
-Lead list behavior:
+Lead list parameters:
 
-- default `limit=50`
-- max `limit=250`
-- optional `county` filter for `shelby` or `jefferson`
-- optional `scoring_mode` filter for `broad`, `owner_occupant`, or `investor`
-- response includes both `leads` and `total`
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `limit` | int | Max records (default 50, max 250) |
+| `offset` | int | Pagination offset |
+| `county` | string | `shelby` or `jefferson` |
+| `scoring_mode` | string | `broad`, `owner_occupant`, `investor` |
+| `sort_by` | string | `score`, `rank`, `assessed_value`, `address`, `city`, `county`, `owner_name`, `last_updated` |
+| `sort_dir` | string | `asc` or `desc` |
+| `rank` | string | `A`, `B`, or `C` |
+| `search` | string | Substring match across address, owner, parcel ID |
+| `owner` | string | Owner name substring |
+| `city` | string | City substring |
+| `parcel_id` | string | Parcel ID substring |
+| `min_score` / `max_score` | float | Score range |
+| `min_value` / `max_value` | float | Assessed value range |
 
-`GET /api/leads/new` remains a separate recent-leads path with a higher cap.
-
-### 9.3 Export Endpoints
+### 10.3 Export Endpoints
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/leads/export` | CRM-ready export list |
 | `GET` | `/api/leads/export/{property_id}` | CRM-ready single-property export |
 
-Export payloads now include `property.county` so downstream systems can safely distinguish duplicate parcel IDs across counties.
+Export payloads include `property.county` so downstream systems can safely distinguish duplicate parcel IDs across counties.
 
-## 10. Frontend Behavior
-
-### 10.1 Dashboard
-
-The dashboard uses the API `total` field for the headline property count and renders a top-five score view from the current lead slice across Shelby and Jefferson counties.
-
-The dashboard, leads page, and property detail now preserve a selected scoring lens through the `scoring_mode` query parameter.
-
-### 10.2 Leads Page
-
-The leads page uses backend-driven filtering, sorting, and offset pagination. It exposes county as a first-class filter and passes county through property-detail navigation so duplicate parcel IDs across counties remain unambiguous.
-
-The advanced search panel now supports submitting filters by pressing Enter, not just by clicking Apply.
-
-### 10.3 Property Detail
-
-Property detail is currently served from `/property?parcel_id=...&county=...` and retrieves data from `GET /api/leads/{parcel_id}` with an optional `county` query parameter.
-
-## 11. Deployment Design
+## 11. Deployment
 
 ### 11.1 Vercel Routing
 
-`vercel.json` currently routes:
+`vercel.json` routes:
 
-- `/api/*` to `api/index.py`
-- everything else to the Next app under `frontend/`
+- `/api/*` → `api/index.py` (Python/FastAPI)
+- everything else → Next.js frontend under `frontend/`
 
-Vercel cron is also configured here to call `/api/cron/run-signals` daily.
+Vercel cron is configured to call `GET /api/cron/run-signals` daily at 06:00 UTC.
 
 ### 11.2 Python Serverless Entry
 
@@ -416,53 +362,30 @@ Vercel cron is also configured here to call `/api/cron/run-signals` daily.
 
 ### 11.3 Database Connectivity
 
-Hosted deployments should use Supabase Postgres.
+Hosted deployments use Supabase PostgreSQL.
 
-Important design constraint:
+Important: Supabase pooled connections behave like PgBouncer transaction pooling. asyncpg prepared-statement caching is disabled for pooled connections. `backend/app/core/config.py` detects pooled URLs and injects PgBouncer-safe asyncpg settings automatically.
 
-- Supabase pooled connections behave like PgBouncer transaction pooling
-- asyncpg prepared-statement caching had to be disabled for pooled connections
-- `backend/app/core/config.py` now detects pooled URLs and injects PgBouncer-safe asyncpg settings
-
-County data sources currently wired:
-
-- Shelby County parcels: public ArcGIS REST service already used by the repo
-- Jefferson County parcels: public ArcGIS MapServer published by Jefferson County GIS at `https://jccgis.jccal.org/server/rest/services/Basemap/Parcels/MapServer/0`
-- Shelby delinquency overlay: GovEase API endpoint used as a secondary signal source when available
-- Jefferson delinquency overlay: not yet wired because a comparable public GovEase-style feed was not available during implementation research
-
-### 11.4 Environment Model
-
-The backend reads `.env` from the repository root.
-
-Key variables:
+### 11.4 Environment Variables
 
 | Variable | Purpose |
 | --- | --- |
-| `APP_ENV` | runtime mode |
-| `APP_HOST` / `APP_PORT` | backend bind settings |
-| `DATABASE_URL` | async application DB URL |
-| `DATABASE_SYNC_URL` | sync Alembic DB URL |
-| `CORS_ALLOWED_ORIGINS` | local frontend origins |
-| `API_URL` | server-side frontend API base fallback |
-| `NEXT_PUBLIC_API_URL` | browser-facing API base override |
-| `SCORING_VERSION` | score version tag |
-| `SCORE_THRESHOLD` | threshold config |
-| `WEBHOOK_URL` / `WEBHOOK_SECRET` | webhook integration |
-| `WEBHOOK_SCORE_THRESHOLD` | webhook trigger threshold |
-| `CRON_SECRET` | protection for ingest and cron admin flows |
-
-Hosted runtime notes:
-
-- `DATABASE_URL` should be the async application URL used by the FastAPI runtime
-- `DATABASE_SYNC_URL` should be the sync URL used for Alembic and other sync tooling
-- production Supabase pooled connections are expected and explicitly handled by the config layer
+| `APP_ENV` | Runtime mode |
+| `DATABASE_URL` | Async application DB URL (asyncpg) |
+| `DATABASE_SYNC_URL` | Sync Alembic DB URL |
+| `CORS_ALLOWED_ORIGINS` | Local frontend origins |
+| `API_URL` | Server-side frontend API base fallback |
+| `NEXT_PUBLIC_API_URL` | Browser-facing API base override |
+| `SCORING_VERSION` | Score version tag |
+| `CRON_SECRET` | Auth for ingest and cron admin flows |
+| `WEBHOOK_URL` / `WEBHOOK_SECRET` | Webhook integration |
+| `WEBHOOK_SCORE_THRESHOLD` | Webhook trigger threshold |
 
 ## 12. Local Development
 
 ### 12.1 Prerequisites
 
-- Python 3.11+ or compatible virtual environment
+- Python 3.11+
 - Node.js 18+
 - Docker
 
@@ -473,7 +396,7 @@ cp .env.example .env
 docker compose -f infra/docker-compose.yml up -d db
 ```
 
-Recommended local database values:
+Recommended local `.env` values:
 
 ```env
 DATABASE_URL=postgresql+asyncpg://rse_user:rse_password@localhost:5432/rse_db
@@ -489,50 +412,9 @@ alembic upgrade head
 python main.py
 ```
 
-Important: `alembic upgrade head` is a shell command run from your terminal in `backend/`. It is not SQL and will fail if you paste it into the Supabase SQL editor.
+FastAPI docs: `http://127.0.0.1:8000/docs`
 
-If you need to apply revision `0003` manually in the Supabase SQL editor, paste this SQL instead of the Alembic Python migration file:
-
-```sql
-alter table public.signals
-add column if not exists out_of_state_owner boolean not null default false;
-
-alter table public.signals
-add column if not exists corporate_owner boolean not null default false;
-
-update public.alembic_version
-set version_num = '0003'
-where version_num = '0002';
-```
-
-That manual SQL is equivalent to the migration in `backend/alembic/versions/0003_add_cross_county_signals.py` plus the version-table update Alembic would normally manage for you.
-
-If you need to apply revision `0004` manually in the Supabase SQL editor, paste this SQL instead of the Alembic Python migration file:
-
-```sql
-alter table public.scores
-add column if not exists scoring_mode varchar(32) not null default 'broad';
-
-update public.scores
-set scoring_mode = 'broad'
-where scoring_mode is null;
-
-alter table public.scores
-drop constraint if exists uq_scores_property_id;
-
-alter table public.scores
-add constraint uq_scores_property_mode unique (property_id, scoring_mode);
-
-create index if not exists ix_scores_scoring_mode on public.scores (scoring_mode);
-
-update public.alembic_version
-set version_num = '0004'
-where version_num = '0003';
-```
-
-That manual SQL is equivalent to the migration in `backend/alembic/versions/0004_add_scoring_mode_to_scores.py` plus the version-table update Alembic would normally manage for you.
-
-FastAPI docs will be available at `http://127.0.0.1:8000/docs`.
+> Note: `alembic upgrade head` is a terminal command, not SQL. Do not paste it into the Supabase SQL editor.
 
 ### 12.4 Frontend
 
@@ -542,38 +424,23 @@ npm install
 npm run dev
 ```
 
-### 12.5 Local Ingest Paths
-
-Manual ingest through the API:
+### 12.5 Ingest Commands
 
 ```bash
+# Dry run (no writes)
 curl -X POST 'http://127.0.0.1:8000/api/ingest/run?dry_run=true&limit=100'
+
+# Live ingest with limit
 curl -X POST 'http://127.0.0.1:8000/api/ingest/run?limit=100' -H 'x-cron-secret: YOUR_SECRET'
+
+# Jefferson dry run
 curl -X POST 'http://127.0.0.1:8000/api/ingest/run?county=jefferson&dry_run=true&limit=100'
-curl -X POST 'http://127.0.0.1:8000/api/ingest/run?county=all&limit=100' -H 'x-cron-secret: YOUR_SECRET'
+
+# Incremental ingest (last day)
 curl -X POST 'http://127.0.0.1:8000/api/ingest/run?county=shelby&delta_days=1&dry_run=true'
-curl -X POST 'http://127.0.0.1:8000/api/ingest/run?county=shelby&updated_since=2026-04-13T00:00:00Z' -H 'x-cron-secret: YOUR_SECRET'
-```
 
-Equivalent bearer-auth pattern:
-
-```bash
-curl -X POST 'http://127.0.0.1:8000/api/ingest/run?county=all&limit=100' \
-   -H 'Authorization: Bearer YOUR_SECRET'
-```
-
-CSV ingestion script for local and sample workflows:
-
-```bash
-cd backend
-python scripts/ingest_properties.py --csv ../data/sample_properties.csv
-```
-
-Scoring-only backfill for existing properties:
-
-```bash
-cd backend
-python scripts/run_scoring.py
+# Full rescore batch (offset-paginated)
+curl 'http://127.0.0.1:8000/api/cron/run-signals?offset=0&limit=500' -H 'x-cron-secret: YOUR_SECRET'
 ```
 
 ### 12.6 Testing
@@ -588,29 +455,29 @@ npm run build
 
 ## 13. Operational Notes
 
-- The ingest UI reports the number of fetched, upserted, signaled, and scored records for a run.
-- The main lead API caps results at `250` per request; dashboard and leads UI are aligned to that cap.
-- Some county parcel records do not include a usable property street address; the API falls back to raw or mailing address fields for display.
-- Jefferson County currently contributes parcel, owner, mailing, and assessed-value data, but not the same built-in deed-date or delinquency fields that Shelby exposes.
-- Property detail navigation is currently query-based because that path is more stable in the deployed environment than parcel-based dynamic page routing.
-- Cron auth now supports bearer-token flows that are compatible with Vercel scheduler behavior.
+- All three scoring modes (Broad, Owner Occupant, Investor) must be populated before the lens selector shows meaningful data. Use the Rescore tool on the ingest page after a fresh ingest to populate all modes.
+- The ingest UI auto-batches a full county ingest into 250-record chunks. Leave the record limit blank with a single county selected for this mode.
+- The cron endpoint processes 500 properties per request. A full rescore of 66,000 properties takes approximately 133 requests and is driven from the ingest page.
+- The lead API caps at 250 records per request. The dashboard and lead feed are aligned to this cap.
+- Some parcel records lack a usable street address. The API falls back to raw or mailing address fields for display.
+- Parcel IDs are only unique within a county. All downstream integrations must preserve both `county` and `parcel_id`.
+- Jefferson contributes parcel, owner, mailing, and assessed-value data but not the same built-in deed-date or delinquency fields that Shelby exposes.
 
 ## 14. Known Constraints
 
-- The leads UI now pages through the backend result set, but it still uses offset pagination rather than a cursor model.
-- Ranking quality is functional but not yet tuned for high-confidence business prioritization.
-- The Vercel route setup is working, but it is sensitive because the repo hosts both the Next app and the Python API in one project.
-- Distress signals such as probate, pre-foreclosure, and code violations exist in the schema and scoring model, but their live data sources are not yet fully implemented.
-- Parcel IDs are only unique within a county, so downstream integrations must preserve both `county` and `parcel_id` when round-tripping records.
-
-Operationally, the biggest remaining quality gap is not the score formula itself but the lack of more live distress inputs feeding that formula.
+- The leads feed uses offset pagination. If lead volume grows significantly, cursor pagination may be needed.
+- `pre_foreclosure`, `probate`, `eviction`, and `code_violation` exist in the schema and scoring model but live data sources are not yet implemented.
+- Jefferson tax and legal-distress overlays are not yet wired. Jefferson ranking is currently driven by ownership and value signals rather than a full distress stack.
+- Ranking quality is functional but not yet tuned against real deal outcome data.
 
 ## 15. Forward Plan
 
-The next highest-value work items are:
+Highest-value next improvements:
 
-1. Add Jefferson-compatible distress overlays so Jefferson ranking is not limited mostly to parcel and ownership signals.
-2. Implement probate, pre-foreclosure, and code-violation ingestion before doing another major scoring recalibration.
-3. Add production monitoring for ingest duration, cron execution results, and API failures.
-4. Consider cursor pagination if lead volume or response time grows past what offset pagination handles comfortably.
-5. Continue tightening docs, operator runbooks, and deployment visibility as the product moves from MVP toward production operations.
+1. Add a Jefferson-compatible tax or legal-distress overlay so Jefferson ranking is not limited to parcel and ownership signals.
+2. Implement probate ingestion so inherited/distressed ownership becomes a first-class signal.
+3. Add pre-foreclosure or court-derived legal-distress data.
+4. Add code-violation / nuisance-property data where public sources exist.
+5. Recalibrate score weights only after the new inputs exist — so thresholds are tuned against real signal coverage rather than placeholder math.
+6. Add production monitoring for ingest duration, cron execution results, and API error rates.
+7. Consider cursor pagination if lead volume or response time grows past what offset pagination handles comfortably.
