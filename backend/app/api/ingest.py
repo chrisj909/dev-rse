@@ -3,8 +3,11 @@ POST /api/ingest/run â pull data from all scrapers, upsert into properties 
 run signal + scoring engines on new/updated records.
 Secured with CRON_SECRET via bearer auth, X-Cron-Secret, or query param.
 """
+import logging
 import time
 from datetime import datetime, timedelta, timezone
+
+log = logging.getLogger("rse.ingest")
 
 from fastapi import APIRouter, Header, HTTPException, Depends, Query
 from sqlalchemy import select, tuple_
@@ -18,8 +21,10 @@ from app.models.property import Property
 from app.scoring.engine import ScoringEngine
 from app.scoring.weights import DEFAULT_SCORING_MODE
 from app.scrapers import run_all_scrapers_with_metadata, run_delinquent_only
-from app.signals.engine import SignalEngine
+from app.scrapers.birmingham_311_scraper import fetch_code_violation_addresses
+from app.services.code_violation_service import CodeViolationService
 from app.services.tax_delinquency import TaxDelinquencyService
+from app.signals.engine import SignalEngine
 
 router = APIRouter()
 
@@ -186,6 +191,7 @@ async def run_ingest(
 
     signal_engine = SignalEngine()
     tax_service = TaxDelinquencyService()
+    code_violation_svc = CodeViolationService()
     tax_delinquency_by_parcel = {
         rec.get("parcel_id"): bool(rec.get("is_tax_delinquent", False))
         for rec in records
@@ -194,6 +200,16 @@ async def run_ingest(
     signal_result = {"processed": upserted}
     score_result: dict[str, object] = {"processed": 0}
     tax_result = {"processed": 0, "updated": 0, "not_found": 0}
+    code_violation_result: dict[str, int] = {"processed": 0, "flagged": 0}
+
+    # Fetch 311 violation addresses once per ingest run (Jefferson county only).
+    violation_addresses: set[str] = set()
+    if normalized_county in ("jefferson", "all"):
+        try:
+            violation_addresses = await fetch_code_violation_addresses()
+        except Exception as exc:
+            log.warning("Birmingham 311 fetch failed, skipping code_violation: %s", exc)
+
     try:
         unique_keys = list(dict.fromkeys(property_keys))
         result = await session.execute(
@@ -211,6 +227,9 @@ async def run_ingest(
             for prop in properties
         ]
         tax_result = await tax_service.ingest_batch(tax_records, session)
+        code_violation_result = await code_violation_svc.ingest_batch(
+            properties, session, violation_addresses
+        )
         scoring_modes = await ScoringEngine.score_all_modes_batch(properties, session)
         score_result = dict(scoring_modes.get(DEFAULT_SCORING_MODE, {}))
         score_result["modes"] = scoring_modes
@@ -235,6 +254,7 @@ async def run_ingest(
         "upserted": upserted,
         "signals": signal_result,
         "tax_delinquency": tax_result,
+        "code_violation": code_violation_result,
         "scoring": score_result,
         "elapsed_seconds": round(time.time() - start, 2),
     }

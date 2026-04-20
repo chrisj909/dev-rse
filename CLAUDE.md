@@ -104,7 +104,20 @@ Map uses `react-leaflet@4` (v4, not v5 — v5 requires React 19). Dynamic import
 ## Backend patterns
 
 ### Ingest pipeline
-`POST /api/ingest/run` → scrape ArcGIS → upsert properties → run SignalEngine → TaxDelinquencyService → ScoringEngine (all 3 modes). Each layer uses `session.begin_nested()` savepoints so one bad property doesn't abort the batch. Deadlocks retry 3× with exponential backoff.
+`POST /api/ingest/run` → scrape ArcGIS → upsert properties → run SignalEngine → TaxDelinquencyService → CodeViolationService → ScoringEngine (all 3 modes). Each layer uses `session.begin_nested()` savepoints so one bad property doesn't abort the batch. Deadlocks retry 3× with exponential backoff.
+
+### Code violation signal
+
+`CodeViolationService` (`backend/app/services/code_violation_service.py`) matches properties against Birmingham 311 open data. The scraper (`backend/app/scrapers/birmingham_311_scraper.py`) fetches from the Birmingham CKAN API (`data.birminghamal.gov`, resource `9d55626a-afb2-4473-a084-cb70e721af23`), paginates all records, filters to violation case types, and returns a set of normalized street addresses. Only runs for Jefferson county or "all" ingests. The 311 data covers Birmingham city limits only — Shelby county properties will never match.
+
+### Adding new signal data sources
+
+Follow the `TaxDelinquencyService` / `CodeViolationService` pattern:
+
+1. Scraper in `backend/app/scrapers/` fetches and normalizes data → returns matching keys (addresses, parcel IDs, etc.)
+2. Service in `backend/app/services/` receives properties + scraped data, bulk-upserts only its signal column via `on_conflict_do_update(set_={signal_col: excluded.signal_col})`
+3. Wire into `ingest.py` after `tax_service.ingest_batch()` and before scoring
+4. The stub in `signals/engine.py` stays `return False` — the DB value written by the service is what scoring reads
 
 ### ArcGIS scraper
 Both Shelby and Jefferson scrapers request `returnGeometry=true&outSR=4326` to get WGS84 polygon geometry. `_centroid_from_geometry()` in `arcgis_scraper.py` computes the polygon centroid and returns `(lat, lng)`. Properties without geometry get `null` coords.
@@ -137,6 +150,23 @@ Three modes stored separately in the `scores` table (one row per `property_id ×
 - All other routes → Next.js frontend under `frontend/`
 - Cron: daily at 06:00 UTC → `GET /api/cron/run-signals`
 - Env vars are set in Vercel dashboard. Frontend needs `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+
+### Vercel plugin for Claude Code
+
+The [Vercel plugin](https://vercel.com/docs/agent-resources/vercel-plugin) is installed at user scope (`npx plugins add vercel/vercel-plugin`). It auto-injects context for Next.js/Vercel projects at session start.
+
+Useful slash commands:
+
+| Command | Purpose |
+| ------- | ------- |
+| `/vercel-plugin:status` | Recent deployments, environment overview |
+| `/vercel-plugin:deploy` | Trigger a preview deploy |
+| `/vercel-plugin:deploy prod` | Trigger a production deploy |
+| `/vercel-plugin:env` | List, pull, add, or diff environment variables |
+
+Relevant skills to invoke on demand: `nextjs`, `deployments-cicd`, `vercel-functions`, `routing-middleware`, `env-vars`.
+
+To reinstall: `npx plugins add vercel/vercel-plugin` (requires Bun — install via `curl -fsSL https://bun.sh/install | bash`).
 
 ## Common gotchas
 
