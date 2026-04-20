@@ -90,32 +90,70 @@ export function usePropertyLists() {
   }
 
   async function getListItems(listId: string): Promise<PropertyListItem[]> {
-    const { data } = await createClient()
+    // Step 1: fetch list items (no FK to properties, so no PostgREST join available)
+    const { data: items } = await createClient()
       .from('property_list_items')
-      .select(`
-        id, list_id, county, parcel_id, added_at,
-        properties!inner(address, city, owner_name, assessed_value),
-        scores(score, rank, scoring_mode)
-      `)
+      .select('id, list_id, county, parcel_id, added_at')
       .eq('list_id', listId)
-      .eq('scores.scoring_mode', 'broad')
       .order('added_at', { ascending: false });
 
-    return (data ?? []).map((row: Record<string, unknown>) => {
-      const prop = (row.properties as Record<string, unknown>) ?? {};
-      const scoreRow = Array.isArray(row.scores) ? (row.scores[0] as Record<string, unknown>) : {};
+    if (!items || items.length === 0) return [];
+
+    // Step 2: fetch property details grouped by county
+    const byCounty: Record<string, string[]> = {};
+    for (const item of items as Record<string, unknown>[]) {
+      const c = item.county as string;
+      (byCounty[c] ??= []).push(item.parcel_id as string);
+    }
+
+    const propRows: Record<string, unknown>[] = [];
+    await Promise.all(
+      Object.entries(byCounty).map(async ([county, parcelIds]) => {
+        const { data } = await createClient()
+          .from('properties')
+          .select('id, county, parcel_id, address, city, owner_name, assessed_value')
+          .eq('county', county)
+          .in('parcel_id', parcelIds);
+        propRows.push(...((data ?? []) as Record<string, unknown>[]));
+      })
+    );
+
+    const propMap: Record<string, Record<string, unknown>> = {};
+    const propertyIds: string[] = [];
+    for (const prop of propRows) {
+      propMap[`${prop.county}:${prop.parcel_id}`] = prop;
+      propertyIds.push(prop.id as string);
+    }
+
+    // Step 3: fetch broad scores for those property UUIDs
+    const scoreMap: Record<string, { score: number; rank: string }> = {};
+    if (propertyIds.length > 0) {
+      const { data: scores } = await createClient()
+        .from('scores')
+        .select('property_id, score, rank')
+        .in('property_id', propertyIds)
+        .eq('scoring_mode', 'broad');
+      for (const s of (scores ?? []) as Record<string, unknown>[]) {
+        scoreMap[s.property_id as string] = { score: s.score as number, rank: s.rank as string };
+      }
+    }
+
+    return (items as Record<string, unknown>[]).map(item => {
+      const key = `${item.county}:${item.parcel_id}`;
+      const prop = propMap[key] ?? {};
+      const scoreRow = prop.id ? scoreMap[prop.id as string] : undefined;
       return {
-        id: row.id as string,
-        list_id: row.list_id as string,
-        county: row.county as string,
-        parcel_id: row.parcel_id as string,
-        added_at: row.added_at as string,
-        address: prop.address as string | null,
-        city: prop.city as string | null,
-        owner_name: prop.owner_name as string | null,
-        assessed_value: prop.assessed_value as number | null,
-        score: scoreRow?.score as number | undefined,
-        rank: scoreRow?.rank as string | undefined,
+        id: item.id as string,
+        list_id: item.list_id as string,
+        county: item.county as string,
+        parcel_id: item.parcel_id as string,
+        added_at: item.added_at as string,
+        address: (prop.address as string | null) ?? null,
+        city: (prop.city as string | null) ?? null,
+        owner_name: (prop.owner_name as string | null) ?? null,
+        assessed_value: (prop.assessed_value as number | null) ?? null,
+        score: scoreRow?.score,
+        rank: scoreRow?.rank,
       };
     });
   }

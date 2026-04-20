@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePropertyLists } from '@/hooks/usePropertyLists';
 import { useSavedSearches } from '@/hooks/useSavedSearches';
 import type { MapLead } from '@/components/PropertyMap';
+import { getClientApiBaseUrl } from '@/lib/api';
 
 const PropertyMap = dynamic(() => import('@/components/PropertyMap'), {
   ssr: false,
@@ -15,8 +16,6 @@ const PropertyMap = dynamic(() => import('@/components/PropertyMap'), {
     </div>
   ),
 });
-
-const DEFAULT_API = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 function RankBadge({ rank }: { rank?: string }) {
   if (!rank) return null;
@@ -67,7 +66,7 @@ export default function MapPage() {
     if (search) params.set('search', search);
 
     try {
-      const res = await fetch(`${DEFAULT_API}/api/leads?${params}`);
+      const res = await fetch(`${getClientApiBaseUrl()}/api/leads?${params}`);
       const data = await res.json();
       const withCoords = (data.leads ?? []).filter((l: MapLead) => l.lat != null && l.lng != null);
       setLeads(withCoords);
