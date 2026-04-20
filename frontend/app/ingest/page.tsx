@@ -167,7 +167,24 @@ export default function IngestPage() {
           params.set('limit', String(DEFAULT_BATCH_SIZE));
           params.set('start_offset', String(startOffset));
 
-          const batch = await requestIngest(params);
+          const MAX_ATTEMPTS = 3;
+          let batch: IngestResult | null = null;
+          let lastErr: unknown = null;
+          for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+              batch = await requestIngest(params);
+              lastErr = null;
+              break;
+            } catch (e) {
+              lastErr = e;
+              if (attempt < MAX_ATTEMPTS) {
+                setProgress(`Batch ${batchNumber} failed (attempt ${attempt}/${MAX_ATTEMPTS}), retrying in 3s…`);
+                await new Promise(r => setTimeout(r, 3000));
+                setProgress(`Retrying batch ${batchNumber} from offset ${startOffset} (attempt ${attempt + 1}/${MAX_ATTEMPTS})…`);
+              }
+            }
+          }
+          if (!batch) throw lastErr;
           aggregate.fetched = (aggregate.fetched ?? 0) + (batch.fetched ?? 0);
           aggregate.upserted = (aggregate.upserted ?? 0) + (batch.upserted ?? 0);
           aggregate.batches_completed = batchNumber;
