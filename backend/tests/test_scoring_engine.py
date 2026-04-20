@@ -365,15 +365,13 @@ class TestScoringEngineAllModes:
     @pytest.mark.asyncio
     async def test_score_all_modes_batch_returns_each_mode(self):
         prop = make_property()
-        session = AsyncMock()
+        session = make_session(signal_rows=[])  # no signals → score 0 for all modes
 
-        async def fake_score_batch(self, properties, _session):
-            return {"processed": len(properties), "rank_a": 0, "rank_b": 1, "rank_c": 0, "errors": 0}
-
-        with patch.object(ScoringEngine, "score_batch", new=fake_score_batch):
-            result = await ScoringEngine.score_all_modes_batch([prop], session)
+        result = await ScoringEngine.score_all_modes_batch([prop], session)
 
         assert set(result.keys()) == set(SCORING_MODES.keys())
+        for mode_counts in result.values():
+            assert mode_counts["processed"] == 1
 
 
 # ── ScoringEngine.score_batch() ───────────────────────────────────────────────

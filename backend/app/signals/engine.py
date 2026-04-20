@@ -295,9 +295,9 @@ class SignalEngine:
         """
         Process a list of properties through all registered signal detectors.
 
-        Args:
-            properties: List of SQLAlchemy Property ORM instances.
-            session:    Active async database session.
+        Computes all signal flags in Python first (no DB), then upserts the
+        whole batch in a single SQL statement. Falls back to per-property
+        processing if the bulk upsert fails.
 
         Returns:
             Summary dict: {"processed": N, "<signal_name>": N, ...}
@@ -305,6 +305,71 @@ class SignalEngine:
         counts: dict[str, int] = {name: 0 for name, _ in self._signals}
         counts["processed"] = 0
 
+        if not properties:
+            return counts
+
+        # Compute all flags in Python — pure CPU, no DB round-trips.
+        signal_names = [name for name, _ in self._signals]
+        computed: list[tuple[Property, dict[str, bool]]] = []
+        for prop in properties:
+            flags: dict[str, bool] = {}
+            for signal_name, detector in self._signals:
+                try:
+                    flags[signal_name] = detector(prop)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("Signal %r failed for property %s: %s", signal_name, prop.parcel_id, exc)
+                    flags[signal_name] = False
+            computed.append((prop, flags))
+
+        # Attempt a single bulk upsert for the entire batch.
+        try:
+            insert_stmt = pg_insert(Signal)
+            values = [
+                {
+                    "id": uuid.uuid4(),
+                    "property_id": prop.id,
+                    "absentee_owner": flags.get("absentee_owner", False),
+                    "long_term_owner": flags.get("long_term_owner", False),
+                    "out_of_state_owner": flags.get("out_of_state_owner", False),
+                    "corporate_owner": flags.get("corporate_owner", False),
+                    "tax_delinquent": flags.get("tax_delinquent", False),
+                    "pre_foreclosure": flags.get("pre_foreclosure", False),
+                    "probate": flags.get("probate", False),
+                    "eviction": flags.get("eviction", False),
+                    "code_violation": flags.get("code_violation", False),
+                }
+                for prop, flags in computed
+            ]
+            exc_cols = {
+                col: getattr(insert_stmt.excluded, col)
+                for col in [
+                    "absentee_owner", "long_term_owner", "out_of_state_owner",
+                    "corporate_owner", "tax_delinquent", "pre_foreclosure",
+                    "probate", "eviction", "code_violation",
+                ]
+            }
+            exc_cols["updated_at"] = datetime.now(tz=timezone.utc)
+            await session.execute(
+                insert_stmt.values(values).on_conflict_do_update(
+                    index_elements=["property_id"],
+                    set_=exc_cols,
+                )
+            )
+            for _, flags in computed:
+                counts["processed"] += 1
+                for name in signal_names:
+                    if flags.get(name):
+                        counts[name] = counts.get(name, 0) + 1
+            log.debug("Bulk signal upsert: %d properties", len(computed))
+            return counts
+
+        except Exception as bulk_exc:  # noqa: BLE001
+            log.warning("Bulk signal upsert failed (%s), falling back to per-property", bulk_exc)
+            await session.rollback()
+
+        # Fallback: per-property with savepoints (original behaviour).
+        counts = {name: 0 for name, _ in self._signals}
+        counts["processed"] = 0
         for prop in properties:
             last_exc: Exception | None = None
             for attempt in range(3):
@@ -324,10 +389,7 @@ class SignalEngine:
                         continue
                     break
             if last_exc is not None:
-                log.error(
-                    "Failed to process property %s (parcel=%s): %s",
-                    prop.id, prop.parcel_id, last_exc,
-                )
+                log.error("Failed to process property %s (parcel=%s): %s", prop.id, prop.parcel_id, last_exc)
 
         return counts
 

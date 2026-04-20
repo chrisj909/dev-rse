@@ -229,8 +229,80 @@ class ScoringEngine:
         session: AsyncSession,
         scoring_version: str = SCORING_VERSION,
     ) -> dict[str, dict[str, int]]:
-        """Score a property set for every configured scoring mode."""
-        results: dict[str, dict[str, int]] = {}
+        """Score a property set for every configured scoring mode.
+
+        Loads signals once, computes all modes in Python, then upserts
+        the entire result set (properties × modes) in a single SQL call.
+        Falls back to the sequential per-mode path on bulk failure.
+        """
+        if not properties:
+            return {mode: {"processed": 0, "rank_a": 0, "rank_b": 0, "rank_c": 0, "errors": 0} for mode in SCORING_MODES}
+
+        # Load signals once for all properties.
+        property_ids = [prop.id for prop in properties]
+        signal_rows = (
+            await session.execute(select(Signal).where(Signal.property_id.in_(property_ids)))
+        ).scalars().all()
+        signal_map = {row.property_id: row for row in signal_rows}
+
+        # Compute scores for every property × mode in pure Python.
+        now = datetime.now(tz=timezone.utc)
+        score_values: list[dict] = []
+        results: dict[str, dict[str, int]] = {
+            mode: {"processed": 0, "rank_a": 0, "rank_b": 0, "rank_c": 0, "errors": 0}
+            for mode in SCORING_MODES
+        }
+
+        for prop in properties:
+            signal_row = signal_map.get(prop.id)
+            flags = {col: getattr(signal_row, col, False) for col in _SIGNAL_COLUMNS} if signal_row else {}
+            for mode in SCORING_MODES:
+                try:
+                    score_val, rank, reasons = calculate_score_for_mode(flags, mode=mode)
+                    score_values.append({
+                        "id": uuid.uuid4(),
+                        "property_id": prop.id,
+                        "scoring_mode": mode,
+                        "score": score_val,
+                        "rank": rank,
+                        "reason": reasons,
+                        "scoring_version": scoring_version,
+                        "last_updated": now,
+                    })
+                    results[mode]["processed"] += 1
+                    results[mode][f"rank_{rank.lower()}"] = results[mode].get(f"rank_{rank.lower()}", 0) + 1
+                except Exception as exc:  # noqa: BLE001
+                    log.error("Score compute failed property=%s mode=%s: %s", prop.id, mode, exc)
+                    results[mode]["errors"] += 1
+
+        if not score_values:
+            return results
+
+        # Single bulk upsert for all properties × all modes.
+        try:
+            insert_stmt = pg_insert(Score)
+            exc = insert_stmt.excluded
+            await session.execute(
+                insert_stmt.values(score_values).on_conflict_do_update(
+                    index_elements=["property_id", "scoring_mode"],
+                    set_={
+                        "score": exc.score,
+                        "rank": exc.rank,
+                        "reason": exc.reason,
+                        "scoring_version": exc.scoring_version,
+                        "last_updated": exc.last_updated,
+                    },
+                )
+            )
+            log.debug("Bulk score upsert: %d rows (%d properties × %d modes)", len(score_values), len(properties), len(SCORING_MODES))
+            return results
+
+        except Exception as bulk_exc:  # noqa: BLE001
+            log.warning("Bulk score upsert failed (%s), falling back to sequential", bulk_exc)
+            await session.rollback()
+
+        # Fallback: original sequential per-mode path.
+        results = {}
         for mode in SCORING_MODES:
             engine = cls(scoring_version=scoring_version, scoring_mode=mode)
             results[mode] = await engine.score_batch(properties, session)
