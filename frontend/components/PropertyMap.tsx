@@ -1,6 +1,9 @@
 'use client';
 import { useEffect, useRef } from 'react';
-import type { Map as LeafletMap } from 'leaflet';
+import type { Map as LeafletMap, Layer } from 'leaflet';
+import 'leaflet.markercluster';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 
 export interface MapLead {
   property_id: string;
@@ -33,6 +36,7 @@ interface Props {
 export default function PropertyMap({ leads, onPropertyClick, center, zoom, onViewChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
+  const clusterRef = useRef<Layer | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -79,18 +83,19 @@ export default function PropertyMap({ leads, onPropertyClick, center, zoom, onVi
     };
   }, []);
 
-  // Update markers whenever leads change
+  // Rebuild cluster group whenever leads change
   useEffect(() => {
     if (!mapRef.current) return;
     import('leaflet').then(L => {
       const map = mapRef.current!;
 
-      // Clear existing markers
-      map.eachLayer(layer => {
-        if ((layer as unknown as Record<string, unknown>)._icon !== undefined) {
-          map.removeLayer(layer);
-        }
-      });
+      // Remove previous cluster group
+      if (clusterRef.current) {
+        map.removeLayer(clusterRef.current);
+        clusterRef.current = null;
+      }
+
+      const cluster = L.markerClusterGroup({ chunkedLoading: true });
 
       leads.forEach(lead => {
         const color = RANK_COLORS[lead.rank] ?? '#6b7280';
@@ -125,8 +130,11 @@ export default function PropertyMap({ leads, onPropertyClick, center, zoom, onVi
           marker.on('click', () => onPropertyClick(lead));
         }
 
-        marker.addTo(map);
+        cluster.addLayer(marker);
       });
+
+      map.addLayer(cluster);
+      clusterRef.current = cluster;
     });
   }, [leads]);
 

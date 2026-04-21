@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,6 +7,7 @@ import { usePropertyLists } from '@/hooks/usePropertyLists';
 import { useSavedSearches } from '@/hooks/useSavedSearches';
 import type { MapLead } from '@/components/PropertyMap';
 import { getClientApiBaseUrl } from '@/lib/api';
+import { fetchMapLeads } from '@/lib/mapLeads';
 
 const PropertyMap = dynamic(() => import('@/components/PropertyMap'), {
   ssr: false,
@@ -36,6 +37,8 @@ type ScoringMode = 'broad' | 'owner_occupant' | 'investor';
 export default function MapPage() {
   const [leads, setLeads] = useState<MapLead[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [scoringMode, setScoringMode] = useState<ScoringMode>('broad');
   const [rank, setRank] = useState('');
@@ -54,25 +57,46 @@ export default function MapPage() {
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [addListId, setAddListId] = useState('');
+  const fetchGeneration = useRef(0);
 
   const fetchLeads = useCallback(async () => {
+    const generation = fetchGeneration.current + 1;
+    fetchGeneration.current = generation;
     setLoading(true);
-    const params = new URLSearchParams({
-      limit: '500',
-      scoring_mode: scoringMode,
-    });
-    if (rank) params.set('rank', rank);
-    if (county) params.set('county', county);
-    if (search) params.set('search', search);
+    setLoadProgress('Loading map leads...');
+    setFetchError(null);
 
     try {
-      const res = await fetch(`${getClientApiBaseUrl()}/api/leads?${params}`);
-      const data = await res.json();
-      const withCoords = (data.leads ?? []).filter((l: MapLead) => l.lat != null && l.lng != null);
-      setLeads(withCoords);
-      setTotal(data.total ?? 0);
+      const result = await fetchMapLeads<MapLead>({
+        baseUrl: getClientApiBaseUrl(),
+        scoringMode,
+        rank,
+        county,
+        search,
+        onPage: (progress) => {
+          if (fetchGeneration.current !== generation) {
+            return;
+          }
+          setLoadProgress(`Loaded ${progress.fetched.toLocaleString()} / ${progress.total.toLocaleString()} records...`);
+        },
+      });
+      if (fetchGeneration.current !== generation) {
+        return;
+      }
+      setLeads(result.leads);
+      setTotal(result.total);
+    } catch (err: unknown) {
+      if (fetchGeneration.current !== generation) {
+        return;
+      }
+      setLeads([]);
+      setTotal(0);
+      setFetchError(err instanceof Error ? err.message : 'Unable to load map leads.');
     } finally {
-      setLoading(false);
+      if (fetchGeneration.current === generation) {
+        setLoading(false);
+        setLoadProgress(null);
+      }
     }
   }, [scoringMode, rank, county, search]);
 
@@ -104,7 +128,7 @@ export default function MapPage() {
   }
 
   const mappedCount = leads.length;
-  const unmappedCount = total - mappedCount;
+  const unmappedCount = Math.max(0, total - mappedCount);
 
   return (
     <div className="flex flex-col h-full p-4 sm:p-6 gap-4" style={{ minHeight: 'calc(100vh - 4rem)' }}>
@@ -116,6 +140,9 @@ export default function MapPage() {
             {loading ? 'Loading…' : `${mappedCount} mapped · ${total} total`}
             {unmappedCount > 0 && <span className="text-gray-500"> · {unmappedCount} without coords</span>}
           </p>
+          {loading && loadProgress && (
+            <p className="text-slate-400 text-xs mt-1">{loadProgress}</p>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Link
@@ -206,6 +233,12 @@ export default function MapPage() {
           {loading ? '…' : 'Apply'}
         </button>
       </div>
+
+      {fetchError && (
+        <div className="rounded-xl border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-200">
+          {fetchError}
+        </div>
+      )}
 
       {/* Map + sidebar */}
       <div className="flex gap-4 flex-1" style={{ minHeight: '500px' }}>
