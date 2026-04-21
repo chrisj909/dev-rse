@@ -279,27 +279,29 @@ class ScoringEngine:
             return results
 
         # Single bulk upsert for all properties × all modes.
+        # Use a savepoint so a bulk failure rolls back only the score attempt,
+        # not the property/signal writes that happened earlier in the transaction.
         try:
-            insert_stmt = pg_insert(Score)
-            exc = insert_stmt.excluded
-            await session.execute(
-                insert_stmt.values(score_values).on_conflict_do_update(
-                    index_elements=["property_id", "scoring_mode"],
-                    set_={
-                        "score": exc.score,
-                        "rank": exc.rank,
-                        "reason": exc.reason,
-                        "scoring_version": exc.scoring_version,
-                        "last_updated": exc.last_updated,
-                    },
+            async with session.begin_nested():
+                insert_stmt = pg_insert(Score)
+                exc = insert_stmt.excluded
+                await session.execute(
+                    insert_stmt.values(score_values).on_conflict_do_update(
+                        index_elements=["property_id", "scoring_mode"],
+                        set_={
+                            "score": exc.score,
+                            "rank": exc.rank,
+                            "reason": exc.reason,
+                            "scoring_version": exc.scoring_version,
+                            "last_updated": exc.last_updated,
+                        },
+                    )
                 )
-            )
             log.debug("Bulk score upsert: %d rows (%d properties × %d modes)", len(score_values), len(properties), len(SCORING_MODES))
             return results
 
         except Exception as bulk_exc:  # noqa: BLE001
             log.warning("Bulk score upsert failed (%s), falling back to sequential", bulk_exc)
-            await session.rollback()
 
         # Fallback: original sequential per-mode path.
         results = {}
