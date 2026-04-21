@@ -56,6 +56,7 @@ npm run dev                 # Next.js on :3000
 
 # Tests
 cd backend && python -m pytest tests/ -q
+cd frontend && npm test         # map/data guardrail tests
 cd frontend && npm run build    # type-check + build
 
 # Local DB (Docker)
@@ -180,3 +181,16 @@ To reinstall: `npx plugins add vercel/vercel-plugin` (requires Bun — install v
 8. **PgBouncer / asyncpg** — Supabase uses connection pooling. `config.py` auto-detects pooled URLs and disables asyncpg prepared-statement caching. Don't change this
 9. **Multi-step ingest** — the frontend auto-batches in 250-record chunks. Full county ingest = many batches. Progress is cumulative
 10. **Parcel IDs are county-scoped** — always store and pass both `county` and `parcel_id` together; parcel IDs repeat across counties
+11. **Map lead fetch limit** — `/api/leads` caps `limit` at 250. If map requests 500 it will receive a 422 and show no leads. Use offset pagination.
+
+## Functional recommendations (current priority)
+
+- Map data loading: Keep map lead requests paginated at `limit=250` and iterate by `offset` until all records are retrieved. Always check `res.ok` before `res.json()` so API validation errors render clearly in the UI.
+
+- Map resiliency UX: Show a visible error banner on map fetch failure and retain filter state. Keep mapped vs total counts in the header so operators can quickly spot missing coordinates.
+
+- High-volume map performance: If lead volume grows further, move from “fetch all pages” to viewport-based loading (`bounds` query params), then cluster markers.
+
+- Functional guardrail tests: Keep frontend map data-load tests for the 250 API cap and non-200 response handling green (see `frontend/lib/mapLeads.test.ts`).
+
+- Ingest-to-map freshness check: After full ingest/rescore, verify `/api/health/stats` and `/api/leads` counts match expected growth before map QA sign-off.

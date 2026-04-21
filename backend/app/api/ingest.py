@@ -106,6 +106,7 @@ async def run_ingest(
         if delinquent_only:
             records = await run_delinquent_only(county=county)
             primary_fetched = len(records)
+            next_cursor = None
         else:
             scrape_result = await run_all_scrapers_with_metadata(
                 limit=limit,
@@ -115,11 +116,12 @@ async def run_ingest(
             )
             records = scrape_result["records"]
             primary_fetched = scrape_result["primary_fetched"]
+            next_cursor = scrape_result.get("next_cursor")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scraper error: {str(e)}")
 
     fetched = len(records)
-    next_offset = start_offset + primary_fetched if primary_fetched else None
+    next_offset = next_cursor
     has_more = bool(limit and primary_fetched == limit and not delinquent_only and normalized_county != "all")
 
     if dry_run:

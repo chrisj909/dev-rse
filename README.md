@@ -28,9 +28,13 @@ Signals fully implemented with live data:
 - `corporate_owner` — owner name matches LLC, trust, or holdings patterns
 - `tax_delinquent` — Shelby overlay via GovEase
 
+Live ingestion signals:
+
+- `code_violation` — Birmingham 311 open data (Jefferson county, Birmingham city limits only)
+
 Signals present in the schema and scoring model but not yet backed by live ingestion:
 
-- `pre_foreclosure`, `probate`, `eviction`, `code_violation`
+- `pre_foreclosure`, `probate`, `eviction`
 
 ## 3. System Overview
 
@@ -252,7 +256,8 @@ The last example: `25 + 30 + 20 distress combo bonus = 75`.
 
 ### 7.6 Current Scoring Limitations
 
-- `pre_foreclosure`, `probate`, `eviction`, and `code_violation` are scored if present but their live ingestion pipelines are not yet implemented.
+- `pre_foreclosure`, `probate`, and `eviction` are scored if present but their live ingestion pipelines are not yet implemented.
+- `code_violation` is live for Jefferson county via Birmingham 311 open data (Birmingham city limits only).
 - `tax_delinquent` is materially stronger for Shelby than Jefferson because the Shelby GovEase overlay is active; Jefferson lacks an equivalent public source in this repo.
 - Jefferson contributes parcel, address, mailing, ownership, and assessed-value data but not the richer distress overlays that fully exploit the higher-weight scoring branches.
 
@@ -535,7 +540,8 @@ npm run build
 ## 14. Known Constraints
 
 - The leads feed uses offset pagination. If lead volume grows significantly, cursor pagination may be needed.
-- `pre_foreclosure`, `probate`, `eviction`, and `code_violation` exist in the schema and scoring model but live data sources are not yet implemented.
+- `pre_foreclosure`, `probate`, and `eviction` exist in the schema and scoring model but live data sources are not yet implemented.
+- `code_violation` is implemented via Birmingham 311 open data for Jefferson county (Birmingham city limits only).
 - Jefferson tax and legal-distress overlays are not yet wired. Jefferson ranking is currently driven by ownership and value signals rather than a full distress stack.
 - Ranking quality is functional but not yet tuned against real deal outcome data.
 

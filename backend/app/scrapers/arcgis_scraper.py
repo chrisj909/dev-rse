@@ -290,12 +290,19 @@ async def fetch_all(
     updated_since: datetime | None = None,
     start_offset: int = 0,
 ) -> list[dict]:
-    """Paginate through all parcels for the configured county."""
+    """Paginate through all parcels using OBJECTID cursor pagination.
+
+    start_offset is treated as an OBJECTID cursor — fetch records with
+    OBJECTID > start_offset.  0 means start from the first record.
+    Each returned dict includes a ``_objectid`` key for cursor tracking.
+    """
     results: list[dict] = []
-    offset = start_offset
+    cursor = start_offset
     config = COUNTY_CONFIGS[_normalize_county(county)]
     page_size = int(config["page_size"])
-    where_clause = _build_where_clause(config, updated_since)
+    base_where = _build_where_clause(config, updated_since)
+    order_field = config["order_by_field"]
+    out_fields = [*config["fields"], order_field]
 
     async with httpx.AsyncClient(timeout=30) as client:
         while True:
@@ -303,11 +310,16 @@ async def fetch_all(
             if remaining == 0:
                 break
 
+            # OBJECTID cursor avoids ArcGIS resultOffset limits (~33 K on Jefferson).
+            if cursor > 0:
+                where = f"({base_where}) AND {order_field} > {cursor}"
+            else:
+                where = base_where
+
             params = {
-                "where": where_clause,
-                "outFields": ",".join(config["fields"]),
-                "orderByFields": f"{config['order_by_field']} ASC",
-                "resultOffset": offset,
+                "where": where,
+                "outFields": ",".join(out_fields),
+                "orderByFields": f"{order_field} ASC",
                 "resultRecordCount": min(page_size, remaining) if remaining is not None else page_size,
                 "returnGeometry": "true",
                 "outSR": "4326",
@@ -320,14 +332,18 @@ async def fetch_all(
                 break
 
             for feat in features:
-                row = _record_to_dict(feat.get("attributes", {}), config["county"], feat.get("geometry"))
+                attrs = feat.get("attributes", {})
+                objectid = attrs.get(order_field)
+                row = _record_to_dict(attrs, config["county"], feat.get("geometry"))
                 if row:
+                    if objectid is not None:
+                        row["_objectid"] = int(objectid)
+                        cursor = max(cursor, int(objectid))
                     results.append(row)
                     if limit and len(results) >= limit:
                         return results
 
-            offset += page_size
-            if not data.get("exceededTransferLimit", False) and len(features) < page_size:
+            if len(features) < page_size:
                 break
             await polite_page_pause()
 

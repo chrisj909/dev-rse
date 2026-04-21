@@ -113,6 +113,7 @@ def test_ingest_route_passes_start_offset_and_limit_to_scrapers(test_client, mon
         return {
             "records": [{"county": "shelby", "parcel_id": "1"}],
             "primary_fetched": 1,
+            "next_cursor": 2001,
         }
 
     monkeypatch.setattr("app.api.ingest.run_all_scrapers_with_metadata", fake_run_all_scrapers)
@@ -144,6 +145,7 @@ def test_ingest_route_uses_primary_fetch_count_for_chunk_metadata(test_client, m
                 {"county": "shelby", "parcel_id": "C"},
             ],
             "primary_fetched": 1000,
+            "next_cursor": 4000,
         }
 
     monkeypatch.setattr("app.api.ingest.run_all_scrapers_with_metadata", fake_run_all_scrapers)

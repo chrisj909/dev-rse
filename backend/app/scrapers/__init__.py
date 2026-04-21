@@ -11,6 +11,7 @@ SUPPORTED_COUNTIES = ("shelby", "jefferson")
 class ScraperRunResult(TypedDict):
     records: list[dict]
     primary_fetched: int
+    next_cursor: int | None
 
 
 def _resolve_counties(county: str | None) -> list[str]:
@@ -47,6 +48,7 @@ async def run_all_scrapers_with_metadata(
     results: dict[tuple[str, str], dict] = {}
     counties = _resolve_counties(county)
     primary_fetched = 0
+    next_cursor: int | None = None
 
     if start_offset and len(counties) != 1:
         raise ValueError("start_offset is only supported for single-county ingest runs")
@@ -60,6 +62,9 @@ async def run_all_scrapers_with_metadata(
         )
         primary_fetched += len(arcgis_records)
         for record in arcgis_records:
+            oid = record.pop("_objectid", None)
+            if oid is not None:
+                next_cursor = oid if next_cursor is None else max(next_cursor, oid)
             results[(record["county"], record["parcel_id"])] = record
 
         if start_offset == 0:
@@ -75,6 +80,7 @@ async def run_all_scrapers_with_metadata(
     return {
         "records": list(results.values()),
         "primary_fetched": primary_fetched,
+        "next_cursor": next_cursor,
     }
 
 
