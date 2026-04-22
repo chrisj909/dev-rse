@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePropertyLists } from '@/hooks/usePropertyLists';
 import { useSavedSearches } from '@/hooks/useSavedSearches';
 import SavedSearchesModal from '@/components/SavedSearchesModal';
+import ScoreCoverageNotice from '@/components/ScoreCoverageNotice';
 import type { MapLead } from '@/components/PropertyMap';
 import { getClientApiBaseUrl } from '@/lib/api';
 import { fetchMapLeads } from '@/lib/mapLeads';
@@ -296,23 +297,13 @@ function MapPageContent() {
       </div>
 
       {hasIncompleteCoverage && (
-        <div className="rounded-xl border border-amber-700/60 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
-          <p className="font-medium">Only broad score coverage is currently populated in the live database.</p>
-          <p className="mt-1 text-xs text-amber-200/90">
-            Broad: {modeCounts.broad.toLocaleString()} · Owner-Occupant: {modeCounts.owner_occupant.toLocaleString()} · Investor: {modeCounts.investor.toLocaleString()}
-          </p>
-          <p className="mt-2 text-xs text-amber-200/90">
-            The map remains usable for broad leads. For more precise targeting, open the list view and build a custom signal search.
-          </p>
-          {hasUnavailableSelectedMode && (
-            <button
-              onClick={() => setScoringMode(DEFAULT_SCORING_MODE)}
-              className="mt-3 rounded-full border border-amber-500/60 px-3 py-1 text-xs font-medium text-amber-100 hover:bg-amber-500/10"
-            >
-              Switch Back to Broad
-            </button>
-          )}
-        </div>
+        <ScoreCoverageNotice
+          modeCounts={modeCounts}
+          selectedMode={scoringMode}
+          title="Map views are safest on the broad lens right now."
+          description="The map can still drive broad lead review, but signal-based search in Leads is the better workflow until the other score modes finish repopulating."
+          onSwitchToBroad={hasUnavailableSelectedMode ? () => setScoringMode(DEFAULT_SCORING_MODE) : undefined}
+        />
       )}
 
       {fetchError && (

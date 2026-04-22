@@ -40,11 +40,87 @@ interface DbStats {
 }
 
 const DEFAULT_BATCH_SIZE = 250;
+const RESCORE_CHECKPOINT_STORAGE_KEY = 'rse-rescore-checkpoint';
 const SCORE_MODE_LABELS = {
   broad: 'Broad',
   owner_occupant: 'Owner-Occupant',
   investor: 'Investor',
 } as const;
+
+type ScoreModeKey = keyof typeof SCORE_MODE_LABELS;
+type RescoreModeTotals = Record<ScoreModeKey, number>;
+
+interface RescoreCheckpoint {
+  offset: number;
+  batch: number;
+  total: number;
+  modeTotals: RescoreModeTotals;
+  updatedAt: string;
+}
+
+function createEmptyRescoreModeTotals(): RescoreModeTotals {
+  return {
+    broad: 0,
+    owner_occupant: 0,
+    investor: 0,
+  };
+}
+
+function loadRescoreCheckpoint(): RescoreCheckpoint | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const stored = window.localStorage.getItem(RESCORE_CHECKPOINT_STORAGE_KEY);
+    if (!stored) {
+      return null;
+    }
+
+    const parsed = JSON.parse(stored) as Partial<RescoreCheckpoint>;
+    if (
+      typeof parsed.offset !== 'number'
+      || typeof parsed.batch !== 'number'
+      || typeof parsed.total !== 'number'
+      || typeof parsed.updatedAt !== 'string'
+      || !parsed.modeTotals
+    ) {
+      return null;
+    }
+
+    const modeTotals = createEmptyRescoreModeTotals();
+    for (const mode of Object.keys(modeTotals) as ScoreModeKey[]) {
+      const count = parsed.modeTotals[mode];
+      modeTotals[mode] = typeof count === 'number' ? count : 0;
+    }
+
+    return {
+      offset: parsed.offset,
+      batch: parsed.batch,
+      total: parsed.total,
+      updatedAt: parsed.updatedAt,
+      modeTotals,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistRescoreCheckpoint(checkpoint: RescoreCheckpoint) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(RESCORE_CHECKPOINT_STORAGE_KEY, JSON.stringify(checkpoint));
+}
+
+function clearRescoreCheckpointStorage() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem(RESCORE_CHECKPOINT_STORAGE_KEY);
+}
 
 function summarizeErrorText(status: number, text: string): string {
   const trimmed = text.trim();
@@ -96,6 +172,7 @@ export default function IngestPage() {
   const [rescoring, setRescoring] = useState(false);
   const [rescoreProgress, setRescoreProgress] = useState<string | null>(null);
   const [rescoreError, setRescoreError] = useState<string | null>(null);
+  const [rescoreCheckpoint, setRescoreCheckpoint] = useState<RescoreCheckpoint | null>(null);
   const [dbStats, setDbStats] = useState<DbStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const scoreModeCounts = {
@@ -108,6 +185,24 @@ export default function IngestPage() {
     .map(([mode]) => SCORE_MODE_LABELS[mode]);
   const hasIncompleteScoreCoverage = missingScoreModes.length > 0;
   const missingScoreModeConstraint = dbStats?.score_schema?.property_mode_unique_constraint === false;
+
+  useEffect(() => {
+    setRescoreCheckpoint(loadRescoreCheckpoint());
+  }, []);
+
+  useEffect(() => {
+    if (!rescoring) {
+      return;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [rescoring]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -263,23 +358,34 @@ export default function IngestPage() {
     }
   }
 
-  async function runRescore() {
+  function clearSavedRescoreCheckpoint() {
+    clearRescoreCheckpointStorage();
+    setRescoreCheckpoint(null);
+  }
+
+  async function runRescore(options?: { resumeFromCheckpoint?: boolean }) {
     if (!cronSecret) {
       setRescoreError('Cron Secret is required to run a rescore.');
       return;
     }
+
+    const shouldResume = options?.resumeFromCheckpoint === true && rescoreCheckpoint !== null;
     setRescoring(true);
-    setRescoreProgress(null);
+    setRescoreProgress(
+      shouldResume
+        ? `Resuming from ${rescoreCheckpoint.offset.toLocaleString()} / ${rescoreCheckpoint.total.toLocaleString()} properties processed...`
+        : null,
+    );
     setRescoreError(null);
+    let latestCheckpoint: RescoreCheckpoint | null = shouldResume ? rescoreCheckpoint : null;
     try {
-      let offset = 0;
-      let batch = 0;
-      let total = 0;
-      const modeTotals = {
-        broad: 0,
-        owner_occupant: 0,
-        investor: 0,
-      };
+      let offset = shouldResume ? rescoreCheckpoint.offset : 0;
+      let batch = shouldResume ? rescoreCheckpoint.batch : 0;
+      let total = shouldResume ? rescoreCheckpoint.total : 0;
+      const modeTotals = shouldResume
+        ? { ...rescoreCheckpoint.modeTotals }
+        : createEmptyRescoreModeTotals();
+
       while (true) {
         batch += 1;
         const params = new URLSearchParams({ offset: String(offset), limit: '500' });
@@ -307,16 +413,33 @@ export default function IngestPage() {
             modeTotals[mode as keyof typeof modeTotals] += counts.processed ?? 0;
           }
         }
+
+        const checkpoint: RescoreCheckpoint = {
+          offset,
+          batch,
+          total,
+          modeTotals: { ...modeTotals },
+          updatedAt: new Date().toISOString(),
+        };
+        latestCheckpoint = checkpoint;
+        persistRescoreCheckpoint(checkpoint);
+        setRescoreCheckpoint(checkpoint);
+
         setRescoreProgress(
           `Batch ${batch} — scored ${offset} / ${total} properties · Broad ${modeTotals.broad.toLocaleString()} · Owner-Occupant ${modeTotals.owner_occupant.toLocaleString()} · Investor ${modeTotals.investor.toLocaleString()}`,
         );
+        if (batch === 1 || batch % 5 === 0 || !data.has_more || data.processed === 0) {
+          void fetchStats();
+        }
         if (!data.has_more || data.processed === 0) break;
       }
       setRescoreProgress(
         `Done — ${offset} / ${total} properties rescored across ${batch} batches. Broad ${modeTotals.broad.toLocaleString()} · Owner-Occupant ${modeTotals.owner_occupant.toLocaleString()} · Investor ${modeTotals.investor.toLocaleString()}.`,
       );
+      clearSavedRescoreCheckpoint();
     } catch (e: unknown) {
-      setRescoreError(e instanceof Error ? e.message : 'Network error');
+      const message = e instanceof Error ? e.message : 'Network error';
+      setRescoreError(`${message}${latestCheckpoint ? ' Resume is available from the last completed batch.' : ''}`);
     } finally {
       setRescoring(false);
       fetchStats();
@@ -472,7 +595,7 @@ export default function IngestPage() {
             <p className="text-gray-500 text-xs mt-1">Re-run signal detection and scoring without re-scraping ArcGIS. Requires Cron Secret.</p>
           </div>
           <button
-            onClick={runRescore}
+            onClick={() => runRescore()}
             disabled={rescoring || running}
             className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all ${
               rescoring || running ? 'bg-indigo-700/50 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99]'
@@ -482,6 +605,38 @@ export default function IngestPage() {
             {rescoring ? 'Rescoring\u2026' : 'Run Rescore'}
           </button>
         </div>
+        {rescoring && (
+          <p className="text-sky-300 text-xs">
+            Leaving or refreshing this page pauses the client-side rescore loop. Progress is checkpointed after each completed batch so you can resume here.
+          </p>
+        )}
+        {!rescoring && rescoreCheckpoint && (
+          <div className="rounded-lg border border-sky-700/40 bg-sky-900/10 px-4 py-3 text-xs text-sky-100 space-y-2">
+            <p className="font-medium">Saved rescore progress is available.</p>
+            <p className="text-sky-200/80">
+              Last checkpoint: {rescoreCheckpoint.offset.toLocaleString()} / {rescoreCheckpoint.total.toLocaleString()} properties across {rescoreCheckpoint.batch.toLocaleString()} batches.
+            </p>
+            <p className="text-sky-200/80">
+              Broad {rescoreCheckpoint.modeTotals.broad.toLocaleString()} · Owner-Occupant {rescoreCheckpoint.modeTotals.owner_occupant.toLocaleString()} · Investor {rescoreCheckpoint.modeTotals.investor.toLocaleString()} · Saved {new Date(rescoreCheckpoint.updatedAt).toLocaleString()}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => runRescore({ resumeFromCheckpoint: true })}
+                className="rounded-lg bg-sky-600 px-3 py-1.5 font-medium text-white hover:bg-sky-500"
+              >
+                Resume Rescore
+              </button>
+              <button
+                type="button"
+                onClick={clearSavedRescoreCheckpoint}
+                className="rounded-lg border border-gray-600 px-3 py-1.5 font-medium text-gray-300 hover:border-gray-500 hover:text-white"
+              >
+                Clear Checkpoint
+              </button>
+            </div>
+          </div>
+        )}
         {rescoreProgress && (
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />

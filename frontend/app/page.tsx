@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { getClientApiBaseUrl } from '../lib/api';
 import { DEFAULT_SCORING_MODE, SCORING_MODES, getScoringModeLabel, normalizeScoringMode } from '../lib/scoringModes';
+import ScoreCoverageNotice from '../components/ScoreCoverageNotice';
 import { useScoreModeHealth } from '../hooks/useScoreModeHealth';
 
 interface Lead {
@@ -140,23 +141,13 @@ export default function Dashboard() {
       </div>
 
       {hasIncompleteCoverage && (
-        <div className="rounded-xl border border-amber-700/60 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
-          <p className="font-medium">Score coverage is incomplete in the live database.</p>
-          <p className="mt-1 text-xs text-amber-200/90">
-            Broad: {modeCounts.broad.toLocaleString()} · Owner-Occupant: {modeCounts.owner_occupant.toLocaleString()} · Investor: {modeCounts.investor.toLocaleString()}
-          </p>
-          <p className="mt-2 text-xs text-amber-200/90">
-            Use the custom signal search in Leads for precise targeting until the owner-occupant and investor score tables are repopulated.
-          </p>
-          {hasUnavailableSelectedMode && (
-            <button
-              onClick={() => setMode(DEFAULT_SCORING_MODE)}
-              className="mt-3 rounded-full border border-amber-500/60 px-3 py-1 text-xs font-medium text-amber-100 hover:bg-amber-500/10"
-            >
-              Switch Back to Broad
-            </button>
-          )}
-        </div>
+        <ScoreCoverageNotice
+          modeCounts={modeCounts}
+          selectedMode={scoringMode}
+          title="Some score lenses are still repopulating."
+          description="Broad is live, but owner-occupant and investor may stay empty until rescoring finishes. Use the signal-driven lead search for precise targeting in the meantime."
+          onSwitchToBroad={hasUnavailableSelectedMode ? () => setMode(DEFAULT_SCORING_MODE) : undefined}
+        />
       )}
 
       {/* Stat Cards */}

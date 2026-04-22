@@ -20,6 +20,7 @@ import {
   type SignalMatchMode,
 } from '../lib/signalFilters';
 import SaveSearchButton from './SaveSearchButton';
+import ScoreCoverageNotice from './ScoreCoverageNotice';
 import SavedSearchesModal from './SavedSearchesModal';
 import { usePropertyLists } from '@/hooks/usePropertyLists';
 import { useAuth } from '@/contexts/AuthContext';
@@ -446,26 +447,17 @@ export default function LeadsTable({
         )}
 
         {hasIncompleteCoverage && (
-          <div className="mt-4 rounded-xl border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
-            <p className="font-medium">Score coverage is incomplete in the live database.</p>
-            <p className="mt-1 text-xs text-amber-200/90">
-              Broad: {modeCounts.broad.toLocaleString()} · Owner-Occupant: {modeCounts.owner_occupant.toLocaleString()} · Investor: {modeCounts.investor.toLocaleString()}
-            </p>
-            <p className="mt-2 text-xs text-amber-200/90">
-              Custom signal searches remain fully available and are the recommended workflow until the missing score modes are repopulated.
-            </p>
-            {hasUnavailableSelectedMode && (
-              <button
-                type="button"
-                onClick={() => {
-                  setScoringMode(DEFAULT_SCORING_MODE);
-                  navigate({ scoring_mode: null, page: '1' });
-                }}
-                className="mt-3 rounded-full border border-amber-500/60 px-3 py-1 text-xs font-medium text-amber-100 hover:bg-amber-500/10"
-              >
-                Switch Back to Broad
-              </button>
-            )}
+          <div className="mt-4">
+            <ScoreCoverageNotice
+              modeCounts={modeCounts}
+              selectedMode={scoringMode}
+              title="Signal search is the stable workflow while rescoring runs."
+              description="These filters work regardless of score coverage, so you can keep building targeted lists even while owner-occupant and investor rows are still catching up."
+              onSwitchToBroad={hasUnavailableSelectedMode ? () => {
+                setScoringMode(DEFAULT_SCORING_MODE);
+                navigate({ scoring_mode: null, page: '1' });
+              } : undefined}
+            />
           </div>
         )}
 

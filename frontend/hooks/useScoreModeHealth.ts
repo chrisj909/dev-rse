@@ -9,13 +9,24 @@ export interface ScoreModeHealthStats {
   properties: number;
   signals: number;
   scores: Record<string, number>;
+  score_schema?: {
+    property_mode_unique_constraint?: boolean;
+  };
 }
 
-export function useScoreModeHealth() {
+interface UseScoreModeHealthOptions {
+  refreshIntervalMs?: number;
+}
+
+export function useScoreModeHealth({ refreshIntervalMs = 30000 }: UseScoreModeHealthOptions = {}) {
   const [stats, setStats] = useState<ScoreModeHealthStats | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) {
+      setLoading(true);
+    }
+
     try {
       const response = await fetch(`${getClientApiBaseUrl()}/api/health/stats`);
       if (!response.ok) {
@@ -26,13 +37,27 @@ export function useScoreModeHealth() {
     } catch {
       // Non-critical; the rest of the app can still run without the health overlay.
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      } else {
+        setLoading(current => (current ? false : current));
+      }
     }
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    void refresh();
+
+    if (refreshIntervalMs <= 0) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refresh({ silent: true });
+    }, refreshIntervalMs);
+
+    return () => window.clearInterval(intervalId);
+  }, [refresh, refreshIntervalMs]);
 
   const modeCounts = useMemo(
     () => Object.fromEntries(
