@@ -3,7 +3,6 @@ import { type FormEvent, useState, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-import { DEFAULT_SCORING_MODE, SCORING_MODES, getScoringModeLabel } from '../lib/scoringModes';
 import { exportLeadResultsToCsv } from '../lib/leadExport';
 import {
   SIGNAL_FILTERS,
@@ -20,12 +19,10 @@ import {
   type SignalMatchMode,
 } from '../lib/signalFilters';
 import SaveSearchButton from './SaveSearchButton';
-import ScoreCoverageNotice from './ScoreCoverageNotice';
 import SavedSearchesModal from './SavedSearchesModal';
 import { usePropertyLists } from '@/hooks/usePropertyLists';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientApiBaseUrl } from '@/lib/api';
-import { useScoreModeHealth } from '@/hooks/useScoreModeHealth';
 
 interface Lead {
   county: string;
@@ -56,7 +53,6 @@ interface FilterState {
   min_value?: string;
   max_value?: string;
   rank?: string;
-  scoring_mode?: string;
   signals?: string;
   exclude_signals?: string;
   signal_match?: string;
@@ -119,7 +115,6 @@ export default function LeadsTable({
   const [minValue, setMinValue] = useState(initialFilters.min_value ?? '');
   const [maxValue, setMaxValue] = useState(initialFilters.max_value ?? '');
   const [rankFilter, setRankFilter] = useState<string>(initialFilters.rank ?? 'All');
-  const [scoringMode, setScoringMode] = useState(initialFilters.scoring_mode ?? DEFAULT_SCORING_MODE);
   const [signalFilters, setSignalFilters] = useState<SignalFilterStateMap>(() => parseSignalFilterStateMap({
     signals: initialFilters.signals,
     excludeSignals: initialFilters.exclude_signals,
@@ -130,7 +125,6 @@ export default function LeadsTable({
   const [searchOpen, setSearchOpen] = useState(false);
   const [exportingResults, setExportingResults] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
-  const { modeCounts, hasIncompleteCoverage, isModeAvailable } = useScoreModeHealth();
 
   // Multi-select
   const { user } = useAuth();
@@ -188,7 +182,6 @@ export default function LeadsTable({
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const { signals: selectedSignalParam, excludeSignals: excludedSignalParam } = serializeSignalFilterStateMap(signalFilters);
   const { included: includedSignalCount, excluded: excludedSignalCount } = getConfiguredSignalFilterCounts(signalFilters);
-  const hasUnavailableSelectedMode = scoringMode !== DEFAULT_SCORING_MODE && !isModeAvailable(scoringMode);
 
   const activeFilterCount = [
     search,
@@ -201,7 +194,6 @@ export default function LeadsTable({
     minValue,
     maxValue,
     rankFilter !== 'All' ? rankFilter : '',
-    scoringMode !== DEFAULT_SCORING_MODE ? scoringMode : '',
     countConfiguredSignalFilters(signalFilters) > 0 ? String(countConfiguredSignalFilters(signalFilters)) : '',
   ].filter(Boolean).length;
 
@@ -239,7 +231,6 @@ export default function LeadsTable({
         min_value: minValue,
         max_value: maxValue,
         rank: rankFilter !== 'All' ? rankFilter : '',
-        scoring_mode: scoringMode,
         signals: selectedSignalParam ?? '',
         exclude_signals: excludedSignalParam ?? '',
         signal_match: selectedSignalParam ? signalMatch : '',
@@ -269,7 +260,6 @@ export default function LeadsTable({
 
   function navigateToLead(lead: Lead) {
     const params = new URLSearchParams({ parcel_id: lead.parcel_id, county: lead.county });
-    if (scoringMode !== DEFAULT_SCORING_MODE) params.set('scoring_mode', scoringMode);
     router.push(`/property?${params.toString()}`);
   }
 
@@ -293,7 +283,6 @@ export default function LeadsTable({
     setMinValue('');
     setMaxValue('');
     setRankFilter('All');
-    setScoringMode(DEFAULT_SCORING_MODE);
     setSignalFilters(createEmptySignalFilterStateMap());
     setSignalMatch('all');
     setSortKey('score');
@@ -309,7 +298,6 @@ export default function LeadsTable({
       min_value: null,
       max_value: null,
       rank: null,
-      scoring_mode: null,
       signals: null,
       exclude_signals: null,
       signal_match: null,
@@ -332,7 +320,6 @@ export default function LeadsTable({
       min_value: minValue,
       max_value: maxValue,
       rank: rankFilter,
-      scoring_mode: scoringMode,
       signals: selectedSignalParam,
       exclude_signals: excludedSignalParam,
       signal_match: selectedSignalParam ? signalMatch : null,
@@ -402,9 +389,6 @@ export default function LeadsTable({
               {activeFilterCount} active filters
             </div>
           )}
-          <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-200">
-            {getScoringModeLabel(scoringMode)}
-          </div>
           {searchOpen && (
             <>
               <button
@@ -444,21 +428,6 @@ export default function LeadsTable({
           <p className={`mt-3 text-xs ${exportStatus.startsWith('Unable') ? 'text-red-300' : 'text-emerald-300'}`}>
             {exportStatus}
           </p>
-        )}
-
-        {hasIncompleteCoverage && (
-          <div className="mt-4">
-            <ScoreCoverageNotice
-              modeCounts={modeCounts}
-              selectedMode={scoringMode}
-              title="Signal search is the stable workflow while rescoring runs."
-              description="These filters work regardless of score coverage, so you can keep building targeted lists even while owner-occupant and investor rows are still catching up."
-              onSwitchToBroad={hasUnavailableSelectedMode ? () => {
-                setScoringMode(DEFAULT_SCORING_MODE);
-                navigate({ scoring_mode: null, page: '1' });
-              } : undefined}
-            />
-          </div>
         )}
 
         {/* Bulk action bar */}
@@ -529,19 +498,6 @@ export default function LeadsTable({
 
         {searchOpen && (<>
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label className="block">
-            <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-400">Scoring Lens</span>
-            <select
-              value={scoringMode}
-              onChange={e => setScoringMode(e.target.value)}
-              className="w-full rounded-xl border border-gray-600 bg-gray-900/80 px-4 py-2.5 text-sm text-white focus:border-blue-500 focus:outline-none"
-            >
-              {SCORING_MODES.map(mode => (
-                <option key={mode.value} value={mode.value}>{mode.label}</option>
-              ))}
-            </select>
-          </label>
-
           <label className="block">
             <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-400">County</span>
             <select

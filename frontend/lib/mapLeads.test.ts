@@ -38,7 +38,6 @@ describe("fetchMapLeads", () => {
 
     const result = await fetchMapLeads<TestLead>({
       baseUrl: "https://dev-rse.vercel.app",
-      scoringMode: "broad",
       fetcher,
       onPage,
     });
@@ -81,7 +80,6 @@ describe("fetchMapLeads", () => {
     await expect(
       fetchMapLeads<TestLead>({
         baseUrl: "https://dev-rse.vercel.app",
-        scoringMode: "broad",
         fetcher,
       }),
     ).rejects.toThrow("Unable to load map leads (HTTP 422).");

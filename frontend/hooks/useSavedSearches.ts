@@ -12,6 +12,12 @@ export interface SavedSearch {
   created_at: string;
 }
 
+function sanitizeSavedSearchFilters(filters: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(filters).filter(([key, value]) => key !== 'scoring_mode' && Boolean(value)),
+  );
+}
+
 export function useSavedSearches() {
   const { user } = useAuth();
   const [searches, setSearches] = useState<SavedSearch[]>([]);
@@ -32,9 +38,10 @@ export function useSavedSearches() {
 
   async function save(name: string, filters: Record<string, string>) {
     if (!user) return null;
+    const sanitizedFilters = sanitizeSavedSearchFilters(filters);
     const { data, error } = await createClient()
       .from('saved_searches')
-      .insert({ user_id: user.id, name, filters })
+      .insert({ user_id: user.id, name, filters: sanitizedFilters })
       .select()
       .single();
     if (!error) await refresh();
@@ -51,7 +58,7 @@ export function useSavedSearches() {
       `${search.name.replace(/\s+/g, '_')}.csv`,
       {
         baseUrl: getClientApiBaseUrl(),
-        filters: search.filters,
+        filters: sanitizeSavedSearchFilters(search.filters),
       },
     );
   }

@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { href: "/leads", label: "Leads", icon: "◈" },
   { href: "/map", label: "Map", icon: "◉" },
   { href: "/lists", label: "Lists", icon: "☆" },
-  { href: "/ingest", label: "Ingest", icon: "⬇" },
+  { href: "/ingest", label: "Admin", icon: "⬇" },
 ];
 
 export default function Sidebar() {

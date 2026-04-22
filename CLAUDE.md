@@ -4,7 +4,7 @@ Project context and workflow guide for AI assistants. Read this before making an
 
 ## What this project is
 
-A lead generation system for Alabama real estate investors. It ingests parcel records from Shelby and Jefferson county ArcGIS services, derives seller-distress signals, scores each parcel across three lenses (broad / owner_occupant / investor), and exposes the results through a FastAPI backend and a Next.js dashboard.
+A lead generation system for Alabama real estate investors. It ingests parcel records from Shelby and Jefferson county ArcGIS services, derives seller-distress signals, stores score modes for internal/admin workflows, and exposes a signal-first search experience through a FastAPI backend and a Next.js dashboard.
 
 Deployed at: **https://dev-rse.vercel.app**
 
@@ -100,10 +100,10 @@ const res = await fetch(`${getClientApiBaseUrl()}/api/leads?...`);
 - `useSavedSearches()` — searches CRUD, `save(name, filters)`, `exportSearch`
 
 ### Signal-first lead search
-`/leads` is now the primary search workflow. `components/LeadsTable.tsx` supports explicit `signals`, `exclude_signals`, and `signal_match` query params so operators can require or exclude each individual distress/ownership signal instead of depending only on precomputed score lenses. Signal metadata and query parsing live in `frontend/lib/signalFilters.ts`.
+`/leads` is now the primary search workflow. `components/LeadsTable.tsx` supports explicit `signals`, `exclude_signals`, and `signal_match` query params so operators can require or exclude each individual distress/ownership signal directly. Signal metadata and query parsing live in `frontend/lib/signalFilters.ts`.
 
 ### Saved views across map and leads
-Saved searches are shared between `/map` and `/leads`. Map views persist the shared search filters plus `map_lat`, `map_lng`, and `map_zoom`; the map page reads those query params back in, and the map's List View handoff preserves the shared search criteria when moving into the lead builder.
+Saved searches are shared between `/map` and `/leads`. Map views persist the shared search filters plus `map_lat`, `map_lng`, and `map_zoom`; the map page reads those query params back in, preserves signal filters from `/leads`, and the map's List View handoff carries the same search criteria back into the lead builder.
 
 ### Campaign exports
 Use the shared export helper in `frontend/lib/leadExport.ts` for lead exports. It paginates through `/api/leads` in 250-record pages, preserves active filters, and writes campaign-ready CSV rows including mailing address and active signals. Saved-search exports should call this helper; list exports should include mailing fields and signal summaries for direct-mail workflows.
@@ -133,9 +133,9 @@ Follow the `TaxDelinquencyService` / `CodeViolationService` pattern:
 Both Shelby and Jefferson scrapers request `returnGeometry=true&outSR=4326` to get WGS84 polygon geometry. `_centroid_from_geometry()` in `arcgis_scraper.py` computes the polygon centroid and returns `(lat, lng)`. Properties without geometry get `null` coords.
 
 ### Scoring modes
-Three modes stored separately in the `scores` table (one row per `property_id × scoring_mode`): `broad`, `owner_occupant`, `investor`. All three must be populated for the lens selector to show meaningful data. Use the Rescore tool on the ingest page after a fresh ingest.
+Three modes are still stored separately in the `scores` table (one row per `property_id × scoring_mode`): `broad`, `owner_occupant`, `investor`. Treat these as backend/admin datasets rather than user-facing UI lenses. Use the Rescore tool on the ingest/admin page after a fresh ingest.
 
-If `/api/health/stats` shows only `broad` counts, treat owner-occupant and investor views as unavailable even if the UI still exposes those labels. The frontend now surfaces this as a warning and steers users toward signal-based custom searches until those score tables are repopulated. The same endpoint now also reports `score_schema.property_mode_unique_constraint`; if that is false, production is missing the unique constraint needed to upsert one score row per property and mode.
+If `/api/health/stats` shows only `broad` counts, treat owner-occupant and investor data as incomplete and keep operators on signal-based searches until those score tables are repopulated. The same endpoint now also reports `score_schema.property_mode_unique_constraint`; if that is false, production is missing the unique constraint needed to upsert one score row per property and mode.
 
 ### Cron / rescore
 `GET /api/cron/run-signals` processes 500 properties per call. Protected by `CRON_SECRET` (Bearer token, `X-Cron-Secret` header, or `?cron_secret=` query param). Returns JSON `{status, has_more, next_offset, total_properties}` — never a bare 500.
@@ -150,10 +150,10 @@ If `/api/health/stats` shows only `broad` counts, treat owner-occupant and inves
 | `/` | `app/page.tsx` | Dashboard, auto-refreshes 60s |
 | `/leads` | `app/leads/page.tsx` + `components/LeadsTable.tsx` | Server page passes data to client component; primary custom search/save/export workflow |
 | `/map` | `app/map/page.tsx` | Client-only, Leaflet dynamic import; saved views round-trip through shared search filters and hand off cleanly to `/leads` |
-| `/property` | `app/property/page.tsx` | `?parcel_id=&county=&scoring_mode=` |
+| `/property` | `app/property/page.tsx` | `?parcel_id=&county=` |
 | `/lists` | `app/lists/page.tsx` | Client-only, Supabase browser client |
 | `/auth` | `app/auth/page.tsx` | Sign in / sign up |
-| `/ingest` | `app/ingest/page.tsx` | Ingest runner, rescore, DB status, score coverage verification |
+| `/ingest` | `app/ingest/page.tsx` | Admin console for ingest, rescore, DB status, and score coverage verification |
 
 ## Vercel deployment
 
@@ -193,7 +193,7 @@ To reinstall: `npx plugins add vercel/vercel-plugin` (requires Bun — install v
 9. **Multi-step ingest** — the frontend auto-batches in 250-record chunks. Full county ingest = many batches. Progress is cumulative
 10. **Parcel IDs are county-scoped** — always store and pass both `county` and `parcel_id` together; parcel IDs repeat across counties
 11. **Map lead fetch limit** — `/api/leads` caps `limit` at 250. If map requests 500 it will receive a 422 and show no leads. Use offset pagination.
-12. **Owner/investor lenses show 0 results** — check `/api/health/stats`. If only `broad` counts exist, the data is incomplete; use signal-based searches until rescoring truly populates all score modes.
+12. **Owner/investor score rows are empty** — check `/api/health/stats`. If only `broad` counts exist, the data is incomplete; keep score health on `/ingest` and use signal-based searches in `/leads` and `/map`.
 13. **Signal filters in saved searches** — per-signal include/exclude rules serialize through `signals` and `exclude_signals`. Keep both when building custom links or exports from saved searches.
 
 ## Functional recommendations (current priority)
@@ -202,9 +202,9 @@ To reinstall: `npx plugins add vercel/vercel-plugin` (requires Bun — install v
 
 - Map resiliency UX: Show a visible error banner on map fetch failure and retain filter state. Keep mapped vs total counts in the header so operators can quickly spot missing coordinates.
 
-- Signal-first workflow: Prefer building saved searches from explicit `signals` + `signal_match` filters in `/leads`. Treat score modes as optional shortcuts, not the only search path.
+- Signal-first workflow: Prefer building saved searches from explicit `signals` + `signal_match` filters in `/leads`. Treat `/map` as a visualization of those same filters, not a separate lens system.
 
-- Score health visibility: Keep `/`, `/map`, `/leads`, and `/ingest` aligned on `/api/health/stats` so missing `owner_occupant` or `investor` rows are obvious to operators before they trust those lenses.
+- Score health visibility: Keep score coverage and schema diagnostics on `/ingest`. The dashboard, leads, and map should stay focused on search and review, not operational warnings.
 
 - Export readiness: Lead and list exports should stay mailing-campaign-friendly by including mailing address plus a readable active-signal summary.
 

@@ -1,7 +1,6 @@
 import LeadsTable from '../../components/LeadsTable';
 
 import { getServerApiBaseUrl } from '../../lib/server-api';
-import { DEFAULT_SCORING_MODE, getScoringModeLabel, normalizeScoringMode } from '../../lib/scoringModes';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +44,6 @@ type LeadsPageSearchParams = {
   min_value?: string;
   max_value?: string;
   rank?: string;
-  scoring_mode?: string;
   signals?: string;
   exclude_signals?: string;
   signal_match?: string;
@@ -72,7 +70,6 @@ function buildLeadsQuery(searchParams: LeadsPageSearchParams) {
     'min_value',
     'max_value',
     'rank',
-    'scoring_mode',
     'signals',
     'exclude_signals',
     'signal_match',
@@ -118,7 +115,6 @@ export default async function LeadsPage({
 }) {
   const resolvedSearchParams = await searchParams;
   const { leads, total, limit, offset } = await getLeads(resolvedSearchParams);
-  const scoringMode = normalizeScoringMode(resolvedSearchParams.scoring_mode);
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
@@ -128,7 +124,7 @@ export default async function LeadsPage({
           <p className="text-slate-500 text-sm mt-1">
             {total > 0 ? `${total} properties scored across Shelby and Jefferson counties` : 'No leads yet'}
           </p>
-          <p className="text-slate-400 text-xs mt-1">Scoring lens: {getScoringModeLabel(scoringMode)}</p>
+          <p className="text-slate-400 text-xs mt-1">Use advanced search to build a custom distress and ownership profile.</p>
         </div>
       </div>
       <LeadsTable leads={leads} total={total} pageSize={limit} offset={offset} initialFilters={resolvedSearchParams} />

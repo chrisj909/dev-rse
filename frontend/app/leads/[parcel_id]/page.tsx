@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { getServerApiBaseUrl } from '../../../lib/server-api';
-import { DEFAULT_SCORING_MODE, getScoringModeLabel, normalizeScoringMode } from '../../../lib/scoringModes';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,12 +31,11 @@ function formatCounty(county: string) {
   return `${county.charAt(0).toUpperCase()}${county.slice(1)} County`;
 }
 
-async function getLead(parcel_id: string, county?: string, scoringMode?: string): Promise<LeadDetail | null> {
+async function getLead(parcel_id: string, county?: string): Promise<LeadDetail | null> {
   try {
     const baseUrl = await getServerApiBaseUrl();
     const params = new URLSearchParams();
     if (county) params.set('county', county);
-    if (scoringMode && scoringMode !== DEFAULT_SCORING_MODE) params.set('scoring_mode', scoringMode);
     const query = params.toString();
     const res = await fetch(`${baseUrl}/api/leads/${encodeURIComponent(parcel_id)}${query ? `?${query}` : ''}`, { cache: 'no-store' });
     if (res.status === 404) return null;
@@ -101,12 +99,11 @@ export default async function PropertyDetail({
   searchParams,
 }: {
   params: Promise<{ parcel_id: string }>;
-  searchParams: Promise<{ county?: string; scoring_mode?: string }>;
+  searchParams: Promise<{ county?: string }>;
 }) {
   const { parcel_id } = await params;
-  const { county, scoring_mode } = await searchParams;
-  const scoringMode = normalizeScoringMode(scoring_mode);
-  const lead = await getLead(parcel_id, county, scoringMode);
+  const { county } = await searchParams;
+  const lead = await getLead(parcel_id, county);
   if (!lead) notFound();
   const activeSignals = Object.entries(lead.signals).filter(([, isActive]) => Boolean(isActive));
   const scoreDrivers = lead.score.reason.filter(reason => reason !== 'distress_combo');
@@ -115,7 +112,7 @@ export default async function PropertyDetail({
   return (
     <div className="p-4 sm:p-6 max-w-2xl space-y-6">
       <div>
-        <Link href={scoringMode === DEFAULT_SCORING_MODE ? '/leads' : `/leads?scoring_mode=${encodeURIComponent(scoringMode)}`} className="text-blue-400 hover:text-blue-300 text-sm">← Back to Leads</Link>
+        <Link href="/leads" className="text-blue-400 hover:text-blue-300 text-sm">← Back to Leads</Link>
       </div>
 
       <div>
@@ -147,10 +144,6 @@ export default async function PropertyDetail({
         <div className="flex justify-between px-5 py-4">
           <span className="text-gray-400">Signals Detected</span>
           <span className="text-white font-medium">{activeSignals.length}</span>
-        </div>
-        <div className="flex justify-between px-5 py-4">
-          <span className="text-gray-400">Scoring Mode</span>
-          <span className="text-white font-medium">{getScoringModeLabel(lead.score.scoring_mode ?? scoringMode)}</span>
         </div>
         <div className="flex justify-between px-5 py-4">
           <span className="text-gray-400">Scoring Version</span>

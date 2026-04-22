@@ -449,8 +449,8 @@ export default function IngestPage() {
   return (
     <div className="p-4 sm:p-6 max-w-2xl space-y-5">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Data Ingestion</h1>
-        <p className="text-slate-500 text-sm mt-1">Pull Shelby and Jefferson County property data and score leads</p>
+        <h1 className="text-2xl font-bold text-slate-900">Admin Console</h1>
+        <p className="text-slate-500 text-sm mt-1">Run ingest and rescore jobs, verify source coverage, and inspect score health.</p>
       </div>
 
       {/* Active Sources */}

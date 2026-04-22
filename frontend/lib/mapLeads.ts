@@ -24,10 +24,12 @@ export interface MapLeadsPageProgress {
 
 interface FetchMapLeadsParams {
   baseUrl: string;
-  scoringMode: string;
   rank?: string;
   county?: string;
   search?: string;
+  signals?: string;
+  excludeSignals?: string;
+  signalMatch?: string;
   pageLimit?: number;
   maxPages?: number;
   fetcher?: FetchLike;
@@ -39,10 +41,12 @@ export async function fetchMapLeads<TLead extends MapLeadRecord>(
 ): Promise<{ leads: TLead[]; total: number }> {
   const {
     baseUrl,
-    scoringMode,
     rank = "",
     county = "",
     search = "",
+    signals = "",
+    excludeSignals = "",
+    signalMatch = "all",
     pageLimit = 250,
     maxPages = 20,
     fetcher = (input) => fetch(input),
@@ -57,12 +61,14 @@ export async function fetchMapLeads<TLead extends MapLeadRecord>(
     const query = new URLSearchParams({
       limit: String(pageLimit),
       offset: String(offset),
-      scoring_mode: scoringMode,
     });
 
     if (rank) query.set("rank", rank);
     if (county) query.set("county", county);
     if (search) query.set("search", search);
+    if (signals) query.set("signals", signals);
+    if (excludeSignals) query.set("exclude_signals", excludeSignals);
+    if (signals && signalMatch !== "all") query.set("signal_match", signalMatch);
 
     const response = await fetcher(`${baseUrl}/api/leads?${query.toString()}`);
     if (!response.ok) {

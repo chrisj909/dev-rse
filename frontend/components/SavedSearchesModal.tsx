@@ -19,6 +19,7 @@ export default function SavedSearchesModal({ trigger, targetPath = '/leads' }: P
 
   function loadSearch(search: SavedSearch) {
     const params = new URLSearchParams(search.filters as Record<string, string>);
+    params.delete('scoring_mode');
     const query = params.toString();
     router.push(query ? `${targetPath}?${query}` : targetPath);
     setOpen(false);

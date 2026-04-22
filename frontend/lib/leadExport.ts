@@ -12,7 +12,6 @@ export interface LeadExportRecord {
   assessed_value: number | null;
   score: number;
   rank: string;
-  scoring_mode: string;
   signal_count: number;
   signals: string[];
   last_updated: string;
@@ -58,7 +57,6 @@ export const LEAD_EXPORT_COLUMNS = [
   'assessed_value',
   'score',
   'rank',
-  'scoring_mode',
   'signal_count',
   'active_signals',
   'last_updated',
@@ -129,7 +127,6 @@ export function buildLeadExportRows(leads: LeadExportRecord[]): Record<string, u
     assessed_value: lead.assessed_value,
     score: lead.score,
     rank: lead.rank,
-    scoring_mode: lead.scoring_mode,
     signal_count: lead.signal_count,
     active_signals: lead.signals.join(' | '),
     last_updated: lead.last_updated,

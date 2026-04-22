@@ -7,12 +7,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { usePropertyLists } from '@/hooks/usePropertyLists';
 import { useSavedSearches } from '@/hooks/useSavedSearches';
 import SavedSearchesModal from '@/components/SavedSearchesModal';
-import ScoreCoverageNotice from '@/components/ScoreCoverageNotice';
 import type { MapLead } from '@/components/PropertyMap';
 import { getClientApiBaseUrl } from '@/lib/api';
 import { fetchMapLeads } from '@/lib/mapLeads';
-import { DEFAULT_SCORING_MODE, SCORING_MODES, normalizeScoringMode } from '@/lib/scoringModes';
-import { useScoreModeHealth } from '@/hooks/useScoreModeHealth';
+import { countConfiguredSignalFilters, normalizeSignalMatchMode, parseSignalFilterStateMap } from '@/lib/signalFilters';
 
 const PropertyMap = dynamic(() => import('@/components/PropertyMap'), {
   ssr: false,
@@ -37,8 +35,6 @@ function RankBadge({ rank }: { rank?: string }) {
   );
 }
 
-type ScoringMode = 'broad' | 'owner_occupant' | 'investor';
-
 export default function MapPage() {
   return (
     <Suspense fallback={<div className="flex flex-col h-full p-4 sm:p-6 gap-4" style={{ minHeight: 'calc(100vh - 4rem)' }}><div className="rounded-xl border border-gray-700 bg-gray-800/95 px-4 py-6 text-sm text-gray-300">Loading map view…</div></div>}>
@@ -54,10 +50,12 @@ function MapPageContent() {
   const [loadProgress, setLoadProgress] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
-  const [scoringMode, setScoringMode] = useState<ScoringMode>('broad');
   const [rank, setRank] = useState('');
   const [county, setCounty] = useState('');
   const [search, setSearch] = useState('');
+  const [signals, setSignals] = useState('');
+  const [excludeSignals, setExcludeSignals] = useState('');
+  const [signalMatch, setSignalMatch] = useState<'all' | 'any'>('all');
   const [mapCenter, setMapCenter] = useState<[number, number]>([33.4, -86.8]);
   const [mapZoom, setMapZoom] = useState(10);
   const [selectedLead, setSelectedLead] = useState<MapLead | null>(null);
@@ -72,13 +70,12 @@ function MapPageContent() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [addListId, setAddListId] = useState('');
   const fetchGeneration = useRef(0);
-  const { loading: scoreModeHealthLoading, modeCounts, hasIncompleteCoverage, isModeAvailable } = useScoreModeHealth();
-  const hasUnavailableSelectedMode = scoringMode !== DEFAULT_SCORING_MODE && !isModeAvailable(scoringMode);
+  const signalRuleCount = useMemo(
+    () => countConfiguredSignalFilters(parseSignalFilterStateMap({ signals, excludeSignals })),
+    [excludeSignals, signals],
+  );
   const listViewHref = useMemo(() => {
     const params = new URLSearchParams();
-    if (scoringMode !== DEFAULT_SCORING_MODE) {
-      params.set('scoring_mode', scoringMode);
-    }
     if (rank) {
       params.set('rank', rank);
     }
@@ -88,24 +85,37 @@ function MapPageContent() {
     if (search.trim()) {
       params.set('search', search.trim());
     }
+    if (signals) {
+      params.set('signals', signals);
+    }
+    if (excludeSignals) {
+      params.set('exclude_signals', excludeSignals);
+    }
+    if (signals && signalMatch !== 'all') {
+      params.set('signal_match', signalMatch);
+    }
 
     const query = params.toString();
     return query ? `/leads?${query}` : '/leads';
-  }, [county, rank, scoringMode, search]);
+  }, [county, excludeSignals, rank, search, signalMatch, signals]);
 
   useEffect(() => {
-    const nextScoringMode = normalizeScoringMode(searchParams.get('scoring_mode')) as ScoringMode;
     const nextRank = ['A', 'B', 'C'].includes(searchParams.get('rank') ?? '') ? searchParams.get('rank') ?? '' : '';
     const nextCounty = ['shelby', 'jefferson'].includes(searchParams.get('county') ?? '') ? searchParams.get('county') ?? '' : '';
     const nextSearch = searchParams.get('search') ?? '';
+    const nextSignals = searchParams.get('signals') ?? '';
+    const nextExcludeSignals = searchParams.get('exclude_signals') ?? '';
+    const nextSignalMatch = normalizeSignalMatchMode(searchParams.get('signal_match'));
     const nextLat = Number(searchParams.get('map_lat'));
     const nextLng = Number(searchParams.get('map_lng'));
     const nextZoom = Number(searchParams.get('map_zoom'));
 
-    setScoringMode(nextScoringMode);
     setRank(nextRank);
     setCounty(nextCounty);
     setSearch(nextSearch);
+    setSignals(nextSignals);
+    setExcludeSignals(nextExcludeSignals);
+    setSignalMatch(nextSignalMatch);
     setMapCenter(
       Number.isFinite(nextLat) && Number.isFinite(nextLng)
         ? [nextLat, nextLng]
@@ -125,10 +135,12 @@ function MapPageContent() {
     try {
       const result = await fetchMapLeads<MapLead>({
         baseUrl: getClientApiBaseUrl(),
-        scoringMode,
         rank,
         county,
         search,
+        signals,
+        excludeSignals,
+        signalMatch,
         onPage: (progress) => {
           if (fetchGeneration.current !== generation) {
             return;
@@ -154,7 +166,7 @@ function MapPageContent() {
         setLoadProgress(null);
       }
     }
-  }, [scoringMode, rank, county, search]);
+  }, [county, excludeSignals, rank, search, signalMatch, signals]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
@@ -162,10 +174,12 @@ function MapPageContent() {
     if (!viewName.trim()) return;
     setSavingView(true);
     await saveSearch(viewName.trim(), {
-      scoring_mode: scoringMode,
       rank,
       county,
       search,
+      signals,
+      exclude_signals: excludeSignals,
+      signal_match: signals ? signalMatch : '',
       map_lat: String(mapCenter[0]),
       map_lng: String(mapCenter[1]),
       map_zoom: String(mapZoom),
@@ -246,20 +260,6 @@ function MapPageContent() {
       {/* Filter bar */}
       <div className="flex items-center gap-2 flex-wrap rounded-xl border border-gray-700 bg-gray-800/95 px-4 py-3">
         <select
-          value={scoringMode}
-          onChange={e => setScoringMode(e.target.value as ScoringMode)}
-          className="rounded-lg border border-gray-600 bg-gray-900/80 px-3 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
-        >
-          {SCORING_MODES.map(mode => {
-            const unavailable = !scoreModeHealthLoading && mode.value !== DEFAULT_SCORING_MODE && modeCounts[mode.value] === 0;
-            return (
-              <option key={mode.value} value={mode.value} disabled={unavailable}>
-                {mode.label}{unavailable ? ' (unavailable)' : ''}
-              </option>
-            );
-          })}
-        </select>
-        <select
           value={county}
           onChange={e => setCounty(e.target.value)}
           className="rounded-lg border border-gray-600 bg-gray-900/80 px-3 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
@@ -294,17 +294,15 @@ function MapPageContent() {
         >
           {loading ? '…' : 'Apply'}
         </button>
+        {signalRuleCount > 0 && (
+          <Link
+            href={listViewHref}
+            className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200 transition-colors hover:bg-emerald-500/20"
+          >
+            {signalRuleCount} signal rule{signalRuleCount === 1 ? '' : 's'} active
+          </Link>
+        )}
       </div>
-
-      {hasIncompleteCoverage && (
-        <ScoreCoverageNotice
-          modeCounts={modeCounts}
-          selectedMode={scoringMode}
-          title="Map views are safest on the broad lens right now."
-          description="The map can still drive broad lead review, but signal-based search in Leads is the better workflow until the other score modes finish repopulating."
-          onSwitchToBroad={hasUnavailableSelectedMode ? () => setScoringMode(DEFAULT_SCORING_MODE) : undefined}
-        />
-      )}
 
       {fetchError && (
         <div className="rounded-xl border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-200">
@@ -360,7 +358,7 @@ function MapPageContent() {
 
             <div className="flex gap-2 flex-wrap">
               <Link
-                href={`/property?parcel_id=${encodeURIComponent(selectedLead.parcel_id)}&county=${encodeURIComponent(selectedLead.county)}&scoring_mode=${scoringMode}`}
+                href={`/property?parcel_id=${encodeURIComponent(selectedLead.parcel_id)}&county=${encodeURIComponent(selectedLead.county)}`}
                 className="flex-1 text-center text-xs text-blue-400 hover:text-blue-300 border border-blue-700/50 rounded-lg px-3 py-1.5 transition-colors"
               >
                 View Detail

@@ -1,12 +1,9 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 import { getClientApiBaseUrl } from '../lib/api';
-import { DEFAULT_SCORING_MODE, SCORING_MODES, getScoringModeLabel, normalizeScoringMode } from '../lib/scoringModes';
-import ScoreCoverageNotice from '../components/ScoreCoverageNotice';
-import { useScoreModeHealth } from '../hooks/useScoreModeHealth';
 
 interface Lead {
   county: string;
@@ -44,26 +41,16 @@ function RankBadge({ rank }: { rank: string }) {
 
 export default function Dashboard() {
   const router = useRouter();
-  const pathname = usePathname();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [scoringMode, setScoringModeState] = useState(DEFAULT_SCORING_MODE);
-  const { loading: scoreModeHealthLoading, modeCounts, hasIncompleteCoverage, isModeAvailable } = useScoreModeHealth();
-  const hasUnavailableSelectedMode = scoringMode !== DEFAULT_SCORING_MODE && !isModeAvailable(scoringMode);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    setScoringModeState(normalizeScoringMode(new URLSearchParams(window.location.search).get('scoring_mode')));
-  }, []);
 
   const fetchLeads = useCallback(async () => {
     try {
       const params = new URLSearchParams({
         limit: String(LEADS_FETCH_LIMIT),
-        scoring_mode: scoringMode,
       });
       const res = await fetch(`${getClientApiBaseUrl()}/api/leads?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -82,7 +69,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [scoringMode]);
+  }, []);
 
   useEffect(() => {
     fetchLeads();
@@ -95,60 +82,20 @@ export default function Dashboard() {
   const totalSignals = leads.reduce((sum, l) => sum + (l.signal_count ?? 0), 0);
   const top5 = [...leads].sort((a, b) => b.score - a.score).slice(0, 5);
 
-  function setMode(nextMode: string) {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    if (nextMode === DEFAULT_SCORING_MODE) {
-      params.delete('scoring_mode');
-    } else {
-      params.set('scoring_mode', nextMode);
-    }
-    const query = params.toString();
-    setScoringModeState(normalizeScoringMode(nextMode));
-    router.push(query ? `${pathname}?${query}` : pathname);
-  }
-
   return (
     <div className="p-4 sm:p-6 space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Real Estate Signal Engine</h1>
-          <p className="text-slate-500 text-sm mt-1">Shelby + Jefferson Counties, AL — {getScoringModeLabel(scoringMode)} Dashboard</p>
+          <p className="text-slate-500 text-sm mt-1">Shelby + Jefferson Counties, AL lead overview</p>
         </div>
         <div className="flex flex-row items-center gap-3 sm:flex-col sm:items-end sm:gap-1">
-          <div className="flex items-center gap-2">
-            <label className="text-xs uppercase tracking-wide text-gray-500">Lens</label>
-            <select
-              value={scoringMode}
-              onChange={e => setMode(e.target.value)}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-slate-700"
-            >
-              {SCORING_MODES.map(mode => {
-                const unavailable = !scoreModeHealthLoading && mode.value !== DEFAULT_SCORING_MODE && modeCounts[mode.value] === 0;
-                return (
-                  <option key={mode.value} value={mode.value} disabled={unavailable}>
-                    {mode.label}{unavailable ? ' (unavailable)' : ''}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
           <div className="flex items-center gap-2 text-xs text-gray-500">
             {lastRefresh && <span>{lastRefresh.toLocaleTimeString()}</span>}
             <button onClick={fetchLeads} className="text-blue-400 hover:text-blue-300 underline">Refresh</button>
           </div>
         </div>
       </div>
-
-      {hasIncompleteCoverage && (
-        <ScoreCoverageNotice
-          modeCounts={modeCounts}
-          selectedMode={scoringMode}
-          title="Some score lenses are still repopulating."
-          description="Broad is live, but owner-occupant and investor may stay empty until rescoring finishes. Use the signal-driven lead search for precise targeting in the meantime."
-          onSwitchToBroad={hasUnavailableSelectedMode ? () => setMode(DEFAULT_SCORING_MODE) : undefined}
-        />
-      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -177,7 +124,7 @@ export default function Dashboard() {
       <div className="bg-gray-800 rounded-lg border border-gray-700">
         <div className="px-5 py-4 border-b border-gray-700 flex items-center justify-between">
           <h2 className="text-white font-semibold">Top 5 Leads by Score</h2>
-          <Link href={scoringMode === DEFAULT_SCORING_MODE ? '/leads' : `/leads?scoring_mode=${encodeURIComponent(scoringMode)}`} className="text-blue-400 hover:text-blue-300 text-sm">View all →</Link>
+          <Link href="/leads" className="text-blue-400 hover:text-blue-300 text-sm">View all →</Link>
         </div>
         {loading ? (
           <div className="p-5 space-y-3">
@@ -194,7 +141,6 @@ export default function Dashboard() {
           <div className="divide-y divide-gray-700">
             {top5.map(lead => {
               const params = new URLSearchParams({ parcel_id: lead.parcel_id, county: lead.county });
-              if (scoringMode !== DEFAULT_SCORING_MODE) params.set('scoring_mode', scoringMode);
               return (
                 <div
                   key={`${lead.county}:${lead.parcel_id}`}
