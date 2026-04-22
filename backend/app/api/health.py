@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.models.property import Property
 from app.models.score import Score
 from app.models.signal import Signal
+from app.scoring.weights import SCORING_MODES
 
 router = APIRouter(tags=["health"])
 
@@ -57,10 +58,29 @@ async def health_stats(db: AsyncSession = Depends(get_db)):
             .group_by(Score.scoring_mode)
         )
     ).all()
-    scores_by_mode = {row[0]: row[1] for row in score_rows}
+    scores_by_mode = {mode: 0 for mode in SCORING_MODES}
+    scores_by_mode.update({row[0]: row[1] for row in score_rows})
+
+    score_mode_constraint_result = await db.execute(
+        text(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_constraint constraint_row
+                JOIN pg_class table_row ON table_row.oid = constraint_row.conrelid
+                WHERE table_row.relname = 'scores'
+                  AND constraint_row.conname = 'uq_scores_property_mode'
+            )
+            """
+        )
+    )
+    has_property_mode_constraint = bool(score_mode_constraint_result.scalar())
 
     return {
         "properties": total_properties,
         "signals": total_signals,
         "scores": scores_by_mode,
+        "score_schema": {
+            "property_mode_unique_constraint": has_property_mode_constraint,
+        },
     }

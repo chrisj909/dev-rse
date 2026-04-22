@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClientApiBaseUrl } from '@/lib/api';
-import { downloadCsv } from '@/lib/exportCsv';
+import { exportLeadResultsToCsv } from '@/lib/leadExport';
 
 export interface SavedSearch {
   id: string;
@@ -47,15 +47,12 @@ export function useSavedSearches() {
   }
 
   async function exportSearch(search: SavedSearch) {
-    const params = new URLSearchParams({ limit: '250', ...search.filters });
-    const res = await fetch(`${getClientApiBaseUrl()}/api/leads?${params}`);
-    if (!res.ok) return;
-    const data = await res.json();
-    const leads = Array.isArray(data) ? data : (data.leads ?? []);
-    downloadCsv(
+    await exportLeadResultsToCsv(
       `${search.name.replace(/\s+/g, '_')}.csv`,
-      leads,
-      ['county', 'parcel_id', 'address', 'city', 'owner_name', 'assessed_value', 'score', 'rank', 'signal_count', 'last_updated']
+      {
+        baseUrl: getClientApiBaseUrl(),
+        filters: search.filters,
+      },
     );
   }
 

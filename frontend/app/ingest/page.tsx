@@ -10,7 +10,12 @@ interface IngestResult {
   upserted?: number;
   batches_completed?: number;
   signals?: { processed?: number; error?: string };
-  scoring?: { processed?: number; errors?: number; error?: string };
+  scoring?: {
+    processed?: number;
+    errors?: number;
+    error?: string;
+    modes?: Record<string, { processed?: number; errors?: number; rank_a?: number; rank_b?: number; rank_c?: number }>;
+  };
   tax_delinquency?: { processed?: number; updated?: number; not_found?: number };
   retrieval?: {
     mode?: string;
@@ -29,9 +34,17 @@ interface DbStats {
   properties: number;
   signals: number;
   scores: Record<string, number>;
+  score_schema?: {
+    property_mode_unique_constraint?: boolean;
+  };
 }
 
 const DEFAULT_BATCH_SIZE = 250;
+const SCORE_MODE_LABELS = {
+  broad: 'Broad',
+  owner_occupant: 'Owner-Occupant',
+  investor: 'Investor',
+} as const;
 
 function summarizeErrorText(status: number, text: string): string {
   const trimmed = text.trim();
@@ -85,6 +98,16 @@ export default function IngestPage() {
   const [rescoreError, setRescoreError] = useState<string | null>(null);
   const [dbStats, setDbStats] = useState<DbStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const scoreModeCounts = {
+    broad: dbStats?.scores?.broad ?? 0,
+    owner_occupant: dbStats?.scores?.owner_occupant ?? 0,
+    investor: dbStats?.scores?.investor ?? 0,
+  };
+  const missingScoreModes = (Object.entries(scoreModeCounts) as Array<[keyof typeof SCORE_MODE_LABELS, number]>)
+    .filter(([, count]) => count === 0)
+    .map(([mode]) => SCORE_MODE_LABELS[mode]);
+  const hasIncompleteScoreCoverage = missingScoreModes.length > 0;
+  const missingScoreModeConstraint = dbStats?.score_schema?.property_mode_unique_constraint === false;
 
   const fetchStats = useCallback(async () => {
     try {
@@ -252,6 +275,11 @@ export default function IngestPage() {
       let offset = 0;
       let batch = 0;
       let total = 0;
+      const modeTotals = {
+        broad: 0,
+        owner_occupant: 0,
+        investor: 0,
+      };
       while (true) {
         batch += 1;
         const params = new URLSearchParams({ offset: String(offset), limit: '500' });
@@ -267,16 +295,26 @@ export default function IngestPage() {
           status?: string; error?: string;
           has_more: boolean; next_offset: number;
           total_properties: number; processed: number;
+          scores?: { modes?: Record<string, { processed?: number }> };
         };
         if (data.status === 'error') {
           throw new Error(data.error ?? 'Unknown error from cron endpoint');
         }
         total = data.total_properties;
         offset = data.next_offset;
-        setRescoreProgress(`Batch ${batch} — scored ${offset} / ${total} properties`);
+        for (const [mode, counts] of Object.entries(data.scores?.modes ?? {})) {
+          if (mode in modeTotals) {
+            modeTotals[mode as keyof typeof modeTotals] += counts.processed ?? 0;
+          }
+        }
+        setRescoreProgress(
+          `Batch ${batch} — scored ${offset} / ${total} properties · Broad ${modeTotals.broad.toLocaleString()} · Owner-Occupant ${modeTotals.owner_occupant.toLocaleString()} · Investor ${modeTotals.investor.toLocaleString()}`,
+        );
         if (!data.has_more || data.processed === 0) break;
       }
-      setRescoreProgress(`Done — ${offset} / ${total} properties rescored across ${batch} batches.`);
+      setRescoreProgress(
+        `Done — ${offset} / ${total} properties rescored across ${batch} batches. Broad ${modeTotals.broad.toLocaleString()} · Owner-Occupant ${modeTotals.owner_occupant.toLocaleString()} · Investor ${modeTotals.investor.toLocaleString()}.`,
+      );
     } catch (e: unknown) {
       setRescoreError(e instanceof Error ? e.message : 'Network error');
     } finally {
@@ -453,6 +491,16 @@ export default function IngestPage() {
         {rescoreError && (
           <p className="text-red-400 text-xs">{rescoreError}</p>
         )}
+        {hasIncompleteScoreCoverage && !statsLoading && (
+          <p className="text-amber-300 text-xs">
+            Missing score datasets: {missingScoreModes.join(', ')}. Rescore completion should be verified against the Database panel below before treating those lenses as live.
+          </p>
+        )}
+        {missingScoreModeConstraint && !statsLoading && (
+          <p className="text-red-300 text-xs">
+            The scores table is missing the multi-mode unique constraint (`uq_scores_property_mode`). Owner-occupant and investor rows cannot be upserted safely until the production schema is corrected.
+          </p>
+        )}
       </div>
 
       {/* DB Status */}
@@ -464,13 +512,24 @@ export default function IngestPage() {
         {statsLoading ? (
           <span className="text-gray-500">loading…</span>
         ) : dbStats ? (
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <span><span className="text-white font-medium">{dbStats.properties.toLocaleString()}</span> properties</span>
-            <span><span className="text-white font-medium">{dbStats.signals.toLocaleString()}</span> signals</span>
-            {Object.entries(dbStats.scores).map(([mode, count]) => {
-              const label = mode === 'owner_occupant' ? 'Owner' : mode === 'investor' ? 'Investor' : 'Broad';
-              return <span key={mode}><span className="text-white font-medium">{(count as number).toLocaleString()}</span> {label} scores</span>;
-            })}
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span><span className="text-white font-medium">{dbStats.properties.toLocaleString()}</span> properties</span>
+              <span><span className="text-white font-medium">{dbStats.signals.toLocaleString()}</span> signals</span>
+              {(Object.entries(scoreModeCounts) as Array<[keyof typeof SCORE_MODE_LABELS, number]>).map(([mode, count]) => (
+                <span key={mode}><span className="text-white font-medium">{count.toLocaleString()}</span> {SCORE_MODE_LABELS[mode]} scores</span>
+              ))}
+            </div>
+            {hasIncompleteScoreCoverage && (
+              <p className="text-amber-300">
+                Incomplete score coverage detected. Prefer custom signal searches in Leads until all score modes are populated.
+              </p>
+            )}
+            {missingScoreModeConstraint && (
+              <p className="text-red-300">
+                Score schema mismatch detected: `uq_scores_property_mode` is missing.
+              </p>
+            )}
           </div>
         ) : (
           <span className="text-gray-500">unavailable</span>

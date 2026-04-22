@@ -94,6 +94,7 @@ def _build_lead(prop: Property, signal: Signal, score: Score) -> LeadResponse:
         state=_coerce_state(getattr(prop, "state", None)),
         zip=_coerce_text(getattr(prop, "zip", None)),
         owner_name=_coerce_text(getattr(prop, "owner_name", None)),
+        mailing_address=_coerce_text(getattr(prop, "mailing_address", None)),
         assessed_value=_coerce_float(getattr(prop, "assessed_value", None)),
         score=_coerce_int(getattr(score, "score", None), default=0),
         rank=_coerce_rank(getattr(score, "rank", None)),
@@ -118,6 +119,9 @@ async def get_top_leads(
     county: Optional[str] = Query(default=None, description="Filter by county slug: shelby or jefferson."),
     city: Optional[str] = Query(default=None, description="Filter by city name (case-insensitive)."),
     rank: Optional[str] = Query(default=None, description="Filter by rank band: A, B, or C."),
+    signals: Optional[str] = Query(default=None, description="Comma-separated active signal filters such as absentee_owner,tax_delinquent."),
+    exclude_signals: Optional[str] = Query(default=None, description="Comma-separated signal filters that must be false such as corporate_owner,eviction."),
+    signal_match: str = Query(default="all", description="How to apply selected signals: all or any."),
     search: Optional[str] = Query(default=None, description="Search across address, owner name, and parcel ID."),
     owner: Optional[str] = Query(default=None, description="Filter by owner name substring."),
     parcel_id: Optional[str] = Query(default=None, description="Filter by parcel ID substring."),
@@ -148,6 +152,9 @@ async def get_top_leads(
         county=county,
         city=city,
         rank=rank,
+        signals=signals,
+        exclude_signals=exclude_signals,
+        signal_match=signal_match,
         search=search,
         owner=owner,
         parcel_id=parcel_id,
@@ -294,6 +301,9 @@ def _build_filter_conditions(
     county: Optional[str],
     city: Optional[str],
     rank: Optional[str],
+    signals: Optional[str],
+    exclude_signals: Optional[str],
+    signal_match: str,
     search: Optional[str],
     owner: Optional[str],
     parcel_id: Optional[str],
@@ -321,6 +331,25 @@ def _build_filter_conditions(
         conditions.append(Property.city.ilike(f"%{city}%"))
     if rank is not None and rank.upper() in {"A", "B", "C"}:
         conditions.append(Score.rank == rank.upper())
+    included_signal_names = _coerce_signal_names(signals, parameter_name="signals")
+    excluded_signal_names = _coerce_signal_names(exclude_signals, parameter_name="exclude_signals")
+    overlapping_signal_names = sorted(set(included_signal_names).intersection(excluded_signal_names))
+    if overlapping_signal_names:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Conflicting signal filters. The same signal cannot be required and excluded: "
+                f"{', '.join(overlapping_signal_names)}."
+            ),
+        )
+    if included_signal_names:
+        signal_conditions = [getattr(Signal, signal_name).is_(True) for signal_name in included_signal_names]
+        if _coerce_signal_match(signal_match) == "any":
+            conditions.append(or_(*signal_conditions))
+        else:
+            conditions.extend(signal_conditions)
+    if excluded_signal_names:
+        conditions.extend(getattr(Signal, signal_name).is_(False) for signal_name in excluded_signal_names)
     if search:
         needle = f"%{search}%"
         conditions.append(
@@ -489,6 +518,28 @@ def _coerce_scoring_mode(value: object) -> str:
         return get_scoring_mode(_coerce_text(value) or DEFAULT_SCORING_MODE).slug
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Invalid scoring_mode. Use broad, owner_occupant, or investor.") from exc
+
+
+def _coerce_signal_names(value: object, *, parameter_name: str = "signals") -> list[str]:
+    raw_value = _coerce_text(value)
+    if not raw_value:
+        return []
+
+    signal_names = [part.strip().lower() for part in raw_value.split(",") if part.strip()]
+    invalid = [signal_name for signal_name in signal_names if signal_name not in _SIGNAL_FIELDS]
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid {parameter_name} filter. Unsupported values: {', '.join(invalid)}.",
+        )
+    return list(dict.fromkeys(signal_names))
+
+
+def _coerce_signal_match(value: object) -> str:
+    match_mode = (_coerce_text(value) or "all").lower()
+    if match_mode not in {"all", "any"}:
+        raise HTTPException(status_code=422, detail="Invalid signal_match. Use all or any.")
+    return match_mode
 
 
 def _coerce_rank(value: object) -> str:

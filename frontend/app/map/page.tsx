@@ -1,13 +1,17 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePropertyLists } from '@/hooks/usePropertyLists';
 import { useSavedSearches } from '@/hooks/useSavedSearches';
+import SavedSearchesModal from '@/components/SavedSearchesModal';
 import type { MapLead } from '@/components/PropertyMap';
 import { getClientApiBaseUrl } from '@/lib/api';
 import { fetchMapLeads } from '@/lib/mapLeads';
+import { DEFAULT_SCORING_MODE, SCORING_MODES, normalizeScoringMode } from '@/lib/scoringModes';
+import { useScoreModeHealth } from '@/hooks/useScoreModeHealth';
 
 const PropertyMap = dynamic(() => import('@/components/PropertyMap'), {
   ssr: false,
@@ -35,6 +39,15 @@ function RankBadge({ rank }: { rank?: string }) {
 type ScoringMode = 'broad' | 'owner_occupant' | 'investor';
 
 export default function MapPage() {
+  return (
+    <Suspense fallback={<div className="flex flex-col h-full p-4 sm:p-6 gap-4" style={{ minHeight: 'calc(100vh - 4rem)' }}><div className="rounded-xl border border-gray-700 bg-gray-800/95 px-4 py-6 text-sm text-gray-300">Loading map view…</div></div>}>
+      <MapPageContent />
+    </Suspense>
+  );
+}
+
+function MapPageContent() {
+  const searchParams = useSearchParams();
   const [leads, setLeads] = useState<MapLead[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState<string | null>(null);
@@ -58,6 +71,48 @@ export default function MapPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [addListId, setAddListId] = useState('');
   const fetchGeneration = useRef(0);
+  const { loading: scoreModeHealthLoading, modeCounts, hasIncompleteCoverage, isModeAvailable } = useScoreModeHealth();
+  const hasUnavailableSelectedMode = scoringMode !== DEFAULT_SCORING_MODE && !isModeAvailable(scoringMode);
+  const listViewHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (scoringMode !== DEFAULT_SCORING_MODE) {
+      params.set('scoring_mode', scoringMode);
+    }
+    if (rank) {
+      params.set('rank', rank);
+    }
+    if (county) {
+      params.set('county', county);
+    }
+    if (search.trim()) {
+      params.set('search', search.trim());
+    }
+
+    const query = params.toString();
+    return query ? `/leads?${query}` : '/leads';
+  }, [county, rank, scoringMode, search]);
+
+  useEffect(() => {
+    const nextScoringMode = normalizeScoringMode(searchParams.get('scoring_mode')) as ScoringMode;
+    const nextRank = ['A', 'B', 'C'].includes(searchParams.get('rank') ?? '') ? searchParams.get('rank') ?? '' : '';
+    const nextCounty = ['shelby', 'jefferson'].includes(searchParams.get('county') ?? '') ? searchParams.get('county') ?? '' : '';
+    const nextSearch = searchParams.get('search') ?? '';
+    const nextLat = Number(searchParams.get('map_lat'));
+    const nextLng = Number(searchParams.get('map_lng'));
+    const nextZoom = Number(searchParams.get('map_zoom'));
+
+    setScoringMode(nextScoringMode);
+    setRank(nextRank);
+    setCounty(nextCounty);
+    setSearch(nextSearch);
+    setMapCenter(
+      Number.isFinite(nextLat) && Number.isFinite(nextLng)
+        ? [nextLat, nextLng]
+        : [33.4, -86.8],
+    );
+    setMapZoom(Number.isFinite(nextZoom) && nextZoom > 0 ? nextZoom : 10);
+    setSelectedLead(null);
+  }, [searchParams]);
 
   const fetchLeads = useCallback(async () => {
     const generation = fetchGeneration.current + 1;
@@ -146,11 +201,12 @@ export default function MapPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Link
-            href="/leads"
+            href={listViewHref}
             className="text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg px-3 py-1.5 transition-colors"
           >
             ☰ List View
           </Link>
+          <SavedSearchesModal trigger="Saved Views" targetPath="/map" />
           {user && (
             showSaveInput ? (
               <div className="flex items-center gap-2">
@@ -193,9 +249,14 @@ export default function MapPage() {
           onChange={e => setScoringMode(e.target.value as ScoringMode)}
           className="rounded-lg border border-gray-600 bg-gray-900/80 px-3 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
         >
-          <option value="broad">Broad</option>
-          <option value="owner_occupant">Owner Occupant</option>
-          <option value="investor">Investor</option>
+          {SCORING_MODES.map(mode => {
+            const unavailable = !scoreModeHealthLoading && mode.value !== DEFAULT_SCORING_MODE && modeCounts[mode.value] === 0;
+            return (
+              <option key={mode.value} value={mode.value} disabled={unavailable}>
+                {mode.label}{unavailable ? ' (unavailable)' : ''}
+              </option>
+            );
+          })}
         </select>
         <select
           value={county}
@@ -233,6 +294,26 @@ export default function MapPage() {
           {loading ? '…' : 'Apply'}
         </button>
       </div>
+
+      {hasIncompleteCoverage && (
+        <div className="rounded-xl border border-amber-700/60 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+          <p className="font-medium">Only broad score coverage is currently populated in the live database.</p>
+          <p className="mt-1 text-xs text-amber-200/90">
+            Broad: {modeCounts.broad.toLocaleString()} · Owner-Occupant: {modeCounts.owner_occupant.toLocaleString()} · Investor: {modeCounts.investor.toLocaleString()}
+          </p>
+          <p className="mt-2 text-xs text-amber-200/90">
+            The map remains usable for broad leads. For more precise targeting, open the list view and build a custom signal search.
+          </p>
+          {hasUnavailableSelectedMode && (
+            <button
+              onClick={() => setScoringMode(DEFAULT_SCORING_MODE)}
+              className="mt-3 rounded-full border border-amber-500/60 px-3 py-1 text-xs font-medium text-amber-100 hover:bg-amber-500/10"
+            >
+              Switch Back to Broad
+            </button>
+          )}
+        </div>
+      )}
 
       {fetchError && (
         <div className="rounded-xl border border-red-800 bg-red-900/20 px-4 py-3 text-sm text-red-200">

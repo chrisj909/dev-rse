@@ -228,6 +228,14 @@ class TestGetTopLeadsWithData:
         lead = test_client.get("/api/leads/top").json()["leads"][0]
         assert lead["owner_name"] == "JANE SMITH"
 
+    def test_lead_has_mailing_address(self, test_client, mock_session):
+        prop = make_mock_property(mailing_address="PO BOX 123")
+        sig = make_mock_signal()
+        sc = make_mock_score()
+        _setup_list_mock(mock_session, rows=[(prop, sig, sc)], count=1)
+        lead = test_client.get("/api/leads/top").json()["leads"][0]
+        assert lead["mailing_address"] == "PO BOX 123"
+
     def test_lead_has_assessed_value(self, test_client, mock_session):
         prop = make_mock_property(assessed_value=215000.0)
         sig = make_mock_signal()
@@ -524,9 +532,44 @@ class TestGetTopLeadsFiltering:
         resp = test_client.get("/api/leads/top?scoring_mode=owner_occupant")
         assert resp.status_code == 200
 
+    def test_signals_filter_accepted(self, test_client, mock_session):
+        self._empty(mock_session)
+        resp = test_client.get("/api/leads/top?signals=absentee_owner,tax_delinquent")
+        assert resp.status_code == 200
+
+    def test_signal_match_any_accepted(self, test_client, mock_session):
+        self._empty(mock_session)
+        resp = test_client.get("/api/leads/top?signals=absentee_owner,tax_delinquent&signal_match=any")
+        assert resp.status_code == 200
+
+    def test_exclude_signals_filter_accepted(self, test_client, mock_session):
+        self._empty(mock_session)
+        resp = test_client.get("/api/leads/top?exclude_signals=corporate_owner,eviction")
+        assert resp.status_code == 200
+
     def test_invalid_scoring_mode_returns_422(self, test_client, mock_session):
         self._empty(mock_session)
         resp = test_client.get("/api/leads/top?scoring_mode=badmode")
+        assert resp.status_code == 422
+
+    def test_invalid_signal_returns_422(self, test_client, mock_session):
+        self._empty(mock_session)
+        resp = test_client.get("/api/leads/top?signals=not_a_signal")
+        assert resp.status_code == 422
+
+    def test_invalid_exclude_signal_returns_422(self, test_client, mock_session):
+        self._empty(mock_session)
+        resp = test_client.get("/api/leads/top?exclude_signals=not_a_signal")
+        assert resp.status_code == 422
+
+    def test_conflicting_signal_filters_return_422(self, test_client, mock_session):
+        self._empty(mock_session)
+        resp = test_client.get("/api/leads/top?signals=absentee_owner&exclude_signals=absentee_owner")
+        assert resp.status_code == 422
+
+    def test_invalid_signal_match_returns_422(self, test_client, mock_session):
+        self._empty(mock_session)
+        resp = test_client.get("/api/leads/top?signals=absentee_owner&signal_match=bad")
         assert resp.status_code == 422
 
     def test_min_score_negative_rejected(self, test_client, mock_session):

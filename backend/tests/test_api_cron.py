@@ -25,8 +25,8 @@ class TestRunSignalsCronAuth:
             AsyncMock(return_value={"processed": 0}),
         )
         monkeypatch.setattr(
-            "app.api.cron.ScoringEngine.score_batch",
-            AsyncMock(return_value={"processed": 0}),
+            "app.api.cron.ScoringEngine.score_all_modes_batch",
+            AsyncMock(return_value={"broad": {"processed": 0, "rank_a": 0, "rank_b": 0, "rank_c": 0, "errors": 0}}),
         )
 
         resp = test_client.get(
@@ -51,8 +51,8 @@ class TestRunSignalsCronAuth:
             AsyncMock(return_value={"processed": 0}),
         )
         monkeypatch.setattr(
-            "app.api.cron.ScoringEngine.score_batch",
-            AsyncMock(return_value={"processed": 0}),
+            "app.api.cron.ScoringEngine.score_all_modes_batch",
+            AsyncMock(return_value={"broad": {"processed": 0, "rank_a": 0, "rank_b": 0, "rank_c": 0, "errors": 0}}),
         )
 
         resp = test_client.get("/api/cron/run-signals?cron_secret=secret123")
@@ -100,8 +100,8 @@ class TestRunSignalsCronAuth:
             AsyncMock(return_value={"processed": 0}),
         )
         monkeypatch.setattr(
-            "app.api.cron.ScoringEngine.score_batch",
-            AsyncMock(return_value={"processed": 0}),
+            "app.api.cron.ScoringEngine.score_all_modes_batch",
+            AsyncMock(return_value={"broad": {"processed": 0, "rank_a": 0, "rank_b": 0, "rank_c": 0, "errors": 0}}),
         )
 
         resp = test_client.get(
@@ -114,3 +114,36 @@ class TestRunSignalsCronAuth:
         assert "has_more" in body
         assert "next_offset" in body
         assert "total_properties" in body
+
+    def test_returns_per_mode_score_counts(self, test_client, mock_session, monkeypatch):
+        monkeypatch.setattr("app.api.cron.settings.cron_secret", "secret123")
+
+        result = MagicMock()
+        result.scalar.return_value = 1
+        result.scalars.return_value.all.return_value = [MagicMock()]
+        mock_session.execute = AsyncMock(return_value=result)
+        mock_session.commit = AsyncMock()
+
+        monkeypatch.setattr(
+            "app.api.cron.SignalEngine.process_batch",
+            AsyncMock(return_value={"processed": 1}),
+        )
+        monkeypatch.setattr(
+            "app.api.cron.ScoringEngine.score_all_modes_batch",
+            AsyncMock(return_value={
+                "broad": {"processed": 1, "rank_a": 1, "rank_b": 0, "rank_c": 0, "errors": 0},
+                "owner_occupant": {"processed": 1, "rank_a": 0, "rank_b": 1, "rank_c": 0, "errors": 0},
+                "investor": {"processed": 1, "rank_a": 0, "rank_b": 0, "rank_c": 1, "errors": 0},
+            }),
+        )
+
+        resp = test_client.get(
+            "/api/cron/run-signals",
+            headers={"x-cron-secret": "secret123"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["scores"]["processed"] == 1
+        assert body["scores"]["modes"]["owner_occupant"]["rank_b"] == 1
+        assert body["scores"]["modes"]["investor"]["rank_c"] == 1

@@ -151,6 +151,7 @@ async def run_scoring(batch_size: int, dry_run: bool) -> dict:
                             "tax_delinquent":  signal_row.tax_delinquent,
                             "pre_foreclosure": signal_row.pre_foreclosure,
                             "probate":         signal_row.probate,
+                            "eviction":        signal_row.eviction,
                             "code_violation":  signal_row.code_violation,
                         }
                     else:

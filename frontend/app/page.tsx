@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { getClientApiBaseUrl } from '../lib/api';
 import { DEFAULT_SCORING_MODE, SCORING_MODES, getScoringModeLabel, normalizeScoringMode } from '../lib/scoringModes';
+import { useScoreModeHealth } from '../hooks/useScoreModeHealth';
 
 interface Lead {
   county: string;
@@ -49,6 +50,8 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [scoringMode, setScoringModeState] = useState(DEFAULT_SCORING_MODE);
+  const { loading: scoreModeHealthLoading, modeCounts, hasIncompleteCoverage, isModeAvailable } = useScoreModeHealth();
+  const hasUnavailableSelectedMode = scoringMode !== DEFAULT_SCORING_MODE && !isModeAvailable(scoringMode);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -119,9 +122,14 @@ export default function Dashboard() {
               onChange={e => setMode(e.target.value)}
               className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-slate-700"
             >
-              {SCORING_MODES.map(mode => (
-                <option key={mode.value} value={mode.value}>{mode.label}</option>
-              ))}
+              {SCORING_MODES.map(mode => {
+                const unavailable = !scoreModeHealthLoading && mode.value !== DEFAULT_SCORING_MODE && modeCounts[mode.value] === 0;
+                return (
+                  <option key={mode.value} value={mode.value} disabled={unavailable}>
+                    {mode.label}{unavailable ? ' (unavailable)' : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -130,6 +138,26 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {hasIncompleteCoverage && (
+        <div className="rounded-xl border border-amber-700/60 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+          <p className="font-medium">Score coverage is incomplete in the live database.</p>
+          <p className="mt-1 text-xs text-amber-200/90">
+            Broad: {modeCounts.broad.toLocaleString()} · Owner-Occupant: {modeCounts.owner_occupant.toLocaleString()} · Investor: {modeCounts.investor.toLocaleString()}
+          </p>
+          <p className="mt-2 text-xs text-amber-200/90">
+            Use the custom signal search in Leads for precise targeting until the owner-occupant and investor score tables are repopulated.
+          </p>
+          {hasUnavailableSelectedMode && (
+            <button
+              onClick={() => setMode(DEFAULT_SCORING_MODE)}
+              className="mt-3 rounded-full border border-amber-500/60 px-3 py-1 text-xs font-medium text-amber-100 hover:bg-amber-500/10"
+            >
+              Switch Back to Broad
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

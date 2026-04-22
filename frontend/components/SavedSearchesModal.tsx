@@ -1,25 +1,26 @@
 'use client';
 import { useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSavedSearches, type SavedSearch } from '@/hooks/useSavedSearches';
 import Link from 'next/link';
 
 interface Props {
   trigger?: React.ReactNode;
+  targetPath?: string;
 }
 
-export default function SavedSearchesModal({ trigger }: Props) {
+export default function SavedSearchesModal({ trigger, targetPath = '/leads' }: Props) {
   const { user } = useAuth();
   const { searches, loading, remove, exportSearch, refresh } = useSavedSearches();
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const router = useRouter();
-  const pathname = usePathname();
 
   function loadSearch(search: SavedSearch) {
     const params = new URLSearchParams(search.filters as Record<string, string>);
-    router.push(`/leads?${params.toString()}`);
+    const query = params.toString();
+    router.push(query ? `${targetPath}?${query}` : targetPath);
     setOpen(false);
   }
 

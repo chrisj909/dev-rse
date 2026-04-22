@@ -4,22 +4,43 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 import { DEFAULT_SCORING_MODE, SCORING_MODES, getScoringModeLabel } from '../lib/scoringModes';
+import { exportLeadResultsToCsv } from '../lib/leadExport';
+import {
+  SIGNAL_FILTERS,
+  countConfiguredSignalFilters,
+  createEmptySignalFilterStateMap,
+  getConfiguredSignalFilterCounts,
+  getSignalLabel,
+  normalizeSignalMatchMode,
+  parseSignalFilterStateMap,
+  serializeSignalFilterStateMap,
+  type SignalFilterState,
+  type SignalFilterStateMap,
+  type SignalFilterValue,
+  type SignalMatchMode,
+} from '../lib/signalFilters';
 import SaveSearchButton from './SaveSearchButton';
 import SavedSearchesModal from './SavedSearchesModal';
 import { usePropertyLists } from '@/hooks/usePropertyLists';
 import { useAuth } from '@/contexts/AuthContext';
+import { getClientApiBaseUrl } from '@/lib/api';
+import { useScoreModeHealth } from '@/hooks/useScoreModeHealth';
 
 interface Lead {
   county: string;
   parcel_id: string;
   address: string | null;
   city: string | null;
+  state: string;
+  zip: string | null;
   owner_name: string | null;
+  mailing_address: string | null;
   assessed_value: number | null;
   score: number;
   rank: string;
   scoring_mode?: string;
   signal_count: number;
+  signals: string[];
   last_updated: string;
 }
 
@@ -35,6 +56,9 @@ interface FilterState {
   max_value?: string;
   rank?: string;
   scoring_mode?: string;
+  signals?: string;
+  exclude_signals?: string;
+  signal_match?: string;
   sort_by?: string;
   sort_dir?: string;
   page?: string;
@@ -95,9 +119,17 @@ export default function LeadsTable({
   const [maxValue, setMaxValue] = useState(initialFilters.max_value ?? '');
   const [rankFilter, setRankFilter] = useState<string>(initialFilters.rank ?? 'All');
   const [scoringMode, setScoringMode] = useState(initialFilters.scoring_mode ?? DEFAULT_SCORING_MODE);
+  const [signalFilters, setSignalFilters] = useState<SignalFilterStateMap>(() => parseSignalFilterStateMap({
+    signals: initialFilters.signals,
+    excludeSignals: initialFilters.exclude_signals,
+  }));
+  const [signalMatch, setSignalMatch] = useState<SignalMatchMode>(normalizeSignalMatchMode(initialFilters.signal_match));
   const [sortKey, setSortKey] = useState<SortKey>((initialFilters.sort_by as SortKey) ?? 'score');
   const [sortDir, setSortDir] = useState<SortDir>((initialFilters.sort_dir as SortDir) ?? 'desc');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [exportingResults, setExportingResults] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const { modeCounts, hasIncompleteCoverage, isModeAvailable } = useScoreModeHealth();
 
   // Multi-select
   const { user } = useAuth();
@@ -153,6 +185,9 @@ export default function LeadsTable({
 
   const page = Math.floor(offset / pageSize) + 1;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const { signals: selectedSignalParam, excludeSignals: excludedSignalParam } = serializeSignalFilterStateMap(signalFilters);
+  const { included: includedSignalCount, excluded: excludedSignalCount } = getConfiguredSignalFilterCounts(signalFilters);
+  const hasUnavailableSelectedMode = scoringMode !== DEFAULT_SCORING_MODE && !isModeAvailable(scoringMode);
 
   const activeFilterCount = [
     search,
@@ -165,6 +200,8 @@ export default function LeadsTable({
     minValue,
     maxValue,
     rankFilter !== 'All' ? rankFilter : '',
+    scoringMode !== DEFAULT_SCORING_MODE ? scoringMode : '',
+    countConfiguredSignalFilters(signalFilters) > 0 ? String(countConfiguredSignalFilters(signalFilters)) : '',
   ].filter(Boolean).length;
 
   const currentPageCount = leads.length;
@@ -186,6 +223,36 @@ export default function LeadsTable({
     startTransition(() => {
       router.push(query ? `${pathname}?${query}` : pathname);
     });
+  }
+
+  function getPersistedFilters(): Record<string, string> {
+    return Object.fromEntries(
+      Object.entries({
+        search,
+        county: countyFilter !== 'All' ? countyFilter : '',
+        city: cityFilter,
+        owner: ownerFilter,
+        parcel_id: parcelFilter,
+        min_score: minScore,
+        max_score: maxScore,
+        min_value: minValue,
+        max_value: maxValue,
+        rank: rankFilter !== 'All' ? rankFilter : '',
+        scoring_mode: scoringMode,
+        signals: selectedSignalParam ?? '',
+        exclude_signals: excludedSignalParam ?? '',
+        signal_match: selectedSignalParam ? signalMatch : '',
+        sort_by: sortKey,
+        sort_dir: sortDir,
+      }).filter(([, value]) => value && value !== 'All')
+    ) as Record<string, string>;
+  }
+
+  function setSignalFilterState(signal: SignalFilterValue, nextState: SignalFilterState) {
+    setSignalFilters(prev => ({
+      ...prev,
+      [signal]: nextState,
+    }));
   }
 
   function toggleSort(key: SortKey) {
@@ -225,6 +292,9 @@ export default function LeadsTable({
     setMinValue('');
     setMaxValue('');
     setRankFilter('All');
+    setScoringMode(DEFAULT_SCORING_MODE);
+    setSignalFilters(createEmptySignalFilterStateMap());
+    setSignalMatch('all');
     setSortKey('score');
     setSortDir('desc');
     navigate({
@@ -238,6 +308,10 @@ export default function LeadsTable({
       min_value: null,
       max_value: null,
       rank: null,
+      scoring_mode: null,
+      signals: null,
+      exclude_signals: null,
+      signal_match: null,
       sort_by: null,
       sort_dir: null,
       page: null,
@@ -258,11 +332,45 @@ export default function LeadsTable({
       max_value: maxValue,
       rank: rankFilter,
       scoring_mode: scoringMode,
+      signals: selectedSignalParam,
+      exclude_signals: excludedSignalParam,
+      signal_match: selectedSignalParam ? signalMatch : null,
       sort_by: sortKey,
       sort_dir: sortDir,
       page: '1',
       page_size: String(pageSize),
     });
+  }
+
+  async function exportCurrentSearch() {
+    setExportingResults(true);
+    setExportStatus('Preparing export…');
+
+    try {
+      const filters = getPersistedFilters();
+      const filenameParts = [
+        countyFilter !== 'All' ? countyFilter : 'all_counties',
+        countConfiguredSignalFilters(signalFilters) > 0 ? `${countConfiguredSignalFilters(signalFilters)}_signal_rules` : 'all_leads',
+        new Date().toISOString().slice(0, 10),
+      ];
+
+      const { total: exportedTotal } = await exportLeadResultsToCsv(
+        `${filenameParts.join('_')}.csv`,
+        {
+          baseUrl: getClientApiBaseUrl(),
+          filters,
+          onPage: (progress) => {
+            setExportStatus(`Exporting ${progress.fetched.toLocaleString()} / ${progress.total.toLocaleString()} leads…`);
+          },
+        },
+      );
+      setExportStatus(`Exported ${exportedTotal.toLocaleString()} leads.`);
+      setTimeout(() => setExportStatus(null), 2500);
+    } catch (error) {
+      setExportStatus(error instanceof Error ? error.message : 'Unable to export current results.');
+    } finally {
+      setExportingResults(false);
+    }
   }
 
   function handleFilterSubmit(event: FormEvent<HTMLFormElement>) {
@@ -316,20 +424,50 @@ export default function LeadsTable({
           )}
           <div className="ml-auto flex items-center gap-2">
             <SavedSearchesModal />
+            <button
+              type="button"
+              onClick={exportCurrentSearch}
+              disabled={exportingResults || total === 0}
+              className="rounded-full border border-gray-600 px-3 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-emerald-500 hover:text-white disabled:cursor-not-allowed disabled:border-gray-700 disabled:text-gray-600"
+            >
+              {exportingResults ? 'Exporting…' : 'Export Results'}
+            </button>
             <SaveSearchButton
-              filters={Object.fromEntries(
-                Object.entries({
-                  search, county: countyFilter, city: cityFilter, owner: ownerFilter,
-                  parcel_id: parcelFilter, min_score: minScore, max_score: maxScore,
-                  min_value: minValue, max_value: maxValue,
-                  rank: rankFilter !== 'All' ? rankFilter : '',
-                  scoring_mode: scoringMode, sort_by: sortKey, sort_dir: sortDir,
-                }).filter(([, v]) => v && v !== 'All')
-              )}
+              filters={getPersistedFilters()}
               activeFilterCount={activeFilterCount}
             />
           </div>
         </div>
+
+        {exportStatus && (
+          <p className={`mt-3 text-xs ${exportStatus.startsWith('Unable') ? 'text-red-300' : 'text-emerald-300'}`}>
+            {exportStatus}
+          </p>
+        )}
+
+        {hasIncompleteCoverage && (
+          <div className="mt-4 rounded-xl border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
+            <p className="font-medium">Score coverage is incomplete in the live database.</p>
+            <p className="mt-1 text-xs text-amber-200/90">
+              Broad: {modeCounts.broad.toLocaleString()} · Owner-Occupant: {modeCounts.owner_occupant.toLocaleString()} · Investor: {modeCounts.investor.toLocaleString()}
+            </p>
+            <p className="mt-2 text-xs text-amber-200/90">
+              Custom signal searches remain fully available and are the recommended workflow until the missing score modes are repopulated.
+            </p>
+            {hasUnavailableSelectedMode && (
+              <button
+                type="button"
+                onClick={() => {
+                  setScoringMode(DEFAULT_SCORING_MODE);
+                  navigate({ scoring_mode: null, page: '1' });
+                }}
+                className="mt-3 rounded-full border border-amber-500/60 px-3 py-1 text-xs font-medium text-amber-100 hover:bg-amber-500/10"
+              >
+                Switch Back to Broad
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Bulk action bar */}
         {selectedKeys.size > 0 && (
@@ -535,6 +673,74 @@ export default function LeadsTable({
             </div>
           </div>
         </div>
+
+        <div className="mt-4 rounded-2xl border border-gray-700/70 bg-gray-900/40 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Signal Filters</p>
+              <p className="mt-1 text-xs text-gray-500">Configure each signal individually. Require it, exclude it, or leave it open.</p>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <span>{includedSignalCount} required · {excludedSignalCount} excluded</span>
+              {includedSignalCount > 1 && (
+                <div className="flex items-center gap-1 rounded-full border border-gray-700 bg-gray-800/80 p-1">
+                  {(['all', 'any'] as SignalMatchMode[]).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setSignalMatch(mode)}
+                      className={`rounded-full px-3 py-1 font-medium transition-colors ${signalMatch === mode ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
+                    >
+                      Match {mode}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {countConfiguredSignalFilters(signalFilters) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSignalFilters(createEmptySignalFilterStateMap())}
+                  className="rounded-full border border-gray-700 px-3 py-1 font-medium text-gray-300 hover:border-gray-500 hover:text-white"
+                >
+                  Clear Signals
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {SIGNAL_FILTERS.map(signal => {
+              const configuredState = signalFilters[signal.value];
+              return (
+                <div
+                  key={signal.value}
+                  className={`rounded-2xl border p-4 transition-colors ${configuredState === 'ignore' ? 'border-gray-700 bg-gray-800/50' : configuredState === 'include' ? 'border-emerald-500/60 bg-emerald-500/10' : 'border-rose-500/60 bg-rose-500/10'}`}
+                >
+                  <div>
+                    <p className="text-sm font-medium text-white">{signal.label}</p>
+                    <p className="mt-1 text-xs text-gray-400">{signal.description}</p>
+                  </div>
+                  <div className="mt-3 flex items-center gap-1 rounded-full border border-gray-700 bg-gray-900/70 p-1 text-xs">
+                    {([
+                      { value: 'ignore', label: 'Any' },
+                      { value: 'include', label: 'Has' },
+                      { value: 'exclude', label: 'Skip' },
+                    ] as Array<{ value: SignalFilterState; label: string }>).map(option => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setSignalFilterState(signal.value, option.value)}
+                        className={`flex-1 rounded-full px-3 py-1.5 font-medium transition-colors ${configuredState === option.value ? option.value === 'include' ? 'bg-emerald-500/20 text-emerald-100' : option.value === 'exclude' ? 'bg-rose-500/20 text-rose-100' : 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
         </>)}
       </form>
 
@@ -608,7 +814,24 @@ export default function LeadsTable({
                   <td className="px-5 py-3 text-right font-mono text-gray-300">{formatCurrency(lead.assessed_value)}</td>
                   <td className="px-5 py-3 text-right font-mono text-white">{lead.score}</td>
                   <td className="px-5 py-3 text-center"><RankBadge rank={lead.rank} /></td>
-                  <td className="px-5 py-3 text-right text-gray-300">{lead.signal_count}</td>
+                  <td className="px-5 py-3">
+                    {lead.signals.length === 0 ? (
+                      <div className="text-right text-gray-500">—</div>
+                    ) : (
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {lead.signals.slice(0, 2).map(signal => (
+                          <span key={signal} className="rounded-full bg-blue-500/10 px-2 py-1 text-[11px] text-blue-100">
+                            {getSignalLabel(signal)}
+                          </span>
+                        ))}
+                        {lead.signals.length > 2 && (
+                          <span className="rounded-full bg-gray-700 px-2 py-1 text-[11px] text-gray-300">
+                            +{lead.signals.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-5 py-3 text-right text-gray-400 text-xs">
                     {lead.last_updated ? new Date(lead.last_updated).toLocaleDateString() : '-'}
                   </td>
@@ -680,6 +903,20 @@ export default function LeadsTable({
                 {lead.assessed_value != null && <span>{formatCurrency(lead.assessed_value)}</span>}
                 <span className="ml-auto">{lead.last_updated ? new Date(lead.last_updated).toLocaleDateString() : ''}</span>
               </div>
+              {lead.signals.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {lead.signals.slice(0, 3).map(signal => (
+                    <span key={signal} className="rounded-full bg-blue-500/10 px-2 py-1 text-[11px] text-blue-100">
+                      {getSignalLabel(signal)}
+                    </span>
+                  ))}
+                  {lead.signals.length > 3 && (
+                    <span className="rounded-full bg-gray-700 px-2 py-1 text-[11px] text-gray-300">
+                      +{lead.signals.length - 3}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           ))
         )}

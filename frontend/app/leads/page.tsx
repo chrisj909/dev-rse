@@ -10,7 +10,10 @@ interface Lead {
   parcel_id: string;
   address: string | null;
   city: string | null;
+  state: string;
+  zip: string | null;
   owner_name: string | null;
+  mailing_address: string | null;
   assessed_value: number | null;
   score: number;
   rank: string;
@@ -43,6 +46,9 @@ type LeadsPageSearchParams = {
   max_value?: string;
   rank?: string;
   scoring_mode?: string;
+  signals?: string;
+  exclude_signals?: string;
+  signal_match?: string;
   sort_by?: string;
   sort_dir?: string;
 };
@@ -67,6 +73,9 @@ function buildLeadsQuery(searchParams: LeadsPageSearchParams) {
     'max_value',
     'rank',
     'scoring_mode',
+    'signals',
+    'exclude_signals',
+    'signal_match',
     'sort_by',
     'sort_dir',
   ];

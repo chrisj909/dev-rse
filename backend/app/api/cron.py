@@ -56,13 +56,14 @@ async def run_signals_cron(
 
     signal_engine = SignalEngine()
     signal_counts: dict = {"processed": 0}
-    scoring_counts: dict = {"processed": 0}
+    scoring_counts: dict = {"processed": 0, "modes": {}}
 
     try:
         if chunk:
             signal_counts = await signal_engine.process_batch(chunk, session)
             scoring_modes = await ScoringEngine.score_all_modes_batch(chunk, session)
             scoring_counts = dict(scoring_modes.get(DEFAULT_SCORING_MODE, {}))
+            scoring_counts["modes"] = scoring_modes
             await session.commit()
     except Exception as e:
         await session.rollback()

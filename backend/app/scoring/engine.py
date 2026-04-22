@@ -49,6 +49,7 @@ _SIGNAL_COLUMNS = [
     "tax_delinquent",
     "pre_foreclosure",
     "probate",
+    "eviction",
     "code_violation",
 ]
 

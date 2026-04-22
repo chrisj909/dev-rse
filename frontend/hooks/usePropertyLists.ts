@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { downloadCsv } from '@/lib/exportCsv';
+import { SIGNAL_FILTERS } from '@/lib/signalFilters';
 
 export interface PropertyList {
   id: string;
@@ -20,10 +21,13 @@ export interface PropertyListItem {
   // joined from properties
   address?: string | null;
   city?: string | null;
+  state?: string | null;
   owner_name?: string | null;
+  mailing_address?: string | null;
   assessed_value?: number | null;
   score?: number;
   rank?: string;
+  signals?: string[];
 }
 
 export function usePropertyLists() {
@@ -111,7 +115,7 @@ export function usePropertyLists() {
       Object.entries(byCounty).map(async ([county, parcelIds]) => {
         const { data } = await createClient()
           .from('properties')
-          .select('id, county, parcel_id, address, city, owner_name, assessed_value')
+          .select('id, county, parcel_id, address, city, state, owner_name, mailing_address, assessed_value')
           .eq('county', county)
           .in('parcel_id', parcelIds);
         propRows.push(...((data ?? []) as Record<string, unknown>[]));
@@ -127,6 +131,7 @@ export function usePropertyLists() {
 
     // Step 3: fetch broad scores for those property UUIDs
     const scoreMap: Record<string, { score: number; rank: string }> = {};
+    const signalMap: Record<string, string[]> = {};
     if (propertyIds.length > 0) {
       const { data: scores } = await createClient()
         .from('scores')
@@ -135,6 +140,17 @@ export function usePropertyLists() {
         .eq('scoring_mode', 'broad');
       for (const s of (scores ?? []) as Record<string, unknown>[]) {
         scoreMap[s.property_id as string] = { score: s.score as number, rank: s.rank as string };
+      }
+
+      const signalColumns = ['property_id', ...SIGNAL_FILTERS.map(signal => signal.value)].join(', ');
+      const { data: signalRows } = await createClient()
+        .from('signals')
+        .select(signalColumns)
+        .in('property_id', propertyIds);
+      for (const signalRow of (signalRows ?? []) as unknown as Record<string, unknown>[]) {
+        signalMap[signalRow.property_id as string] = SIGNAL_FILTERS
+          .filter(signal => Boolean(signalRow[signal.value]))
+          .map(signal => signal.value);
       }
     }
 
@@ -150,10 +166,13 @@ export function usePropertyLists() {
         added_at: item.added_at as string,
         address: (prop.address as string | null) ?? null,
         city: (prop.city as string | null) ?? null,
+        state: (prop.state as string | null) ?? null,
         owner_name: (prop.owner_name as string | null) ?? null,
+        mailing_address: (prop.mailing_address as string | null) ?? null,
         assessed_value: (prop.assessed_value as number | null) ?? null,
         score: scoreRow?.score,
         rank: scoreRow?.rank,
+        signals: prop.id ? (signalMap[prop.id as string] ?? []) : [],
       };
     });
   }
@@ -172,8 +191,21 @@ export function usePropertyLists() {
     const items = await getListItems(listId);
     downloadCsv(
       `${listName.replace(/\s+/g, '_')}.csv`,
-      items as unknown as Record<string, unknown>[],
-      ['county', 'parcel_id', 'address', 'city', 'owner_name', 'assessed_value', 'score', 'rank', 'added_at']
+      items.map(item => ({
+        county: item.county,
+        parcel_id: item.parcel_id,
+        address: item.address,
+        city: item.city,
+        state: item.state,
+        owner_name: item.owner_name,
+        mailing_address: item.mailing_address,
+        assessed_value: item.assessed_value,
+        score: item.score,
+        rank: item.rank,
+        active_signals: (item.signals ?? []).join(' | '),
+        added_at: item.added_at,
+      })),
+      ['county', 'parcel_id', 'address', 'city', 'state', 'owner_name', 'mailing_address', 'assessed_value', 'score', 'rank', 'active_signals', 'added_at']
     );
   }
 
